@@ -23,7 +23,7 @@ import { DefectsByModuleChart } from '../../components/dashboard/DefectsByModule
 import { TimeLineChart } from '../../components/dashboard/TimeLineChart';
 import { projectReleaseCardView } from '../../api/releaseView/ProjectReleaseCardView';
 import { getUserProjects } from '../../services/projectService';
-import { getCombinedRisk } from '../../utils/riskUtils';
+import { getProjectRiskFromMetrics } from '../../utils/riskUtils';
 import { Colors } from '../../constants/colors';
 import { Typography } from '../../constants/typography';
 import { Spacing, Radius, Shadows } from '../../constants/theme';
@@ -58,8 +58,8 @@ const ProjectDetailScreen = () => {
   const [defectDensity, setDefectDensity] = useState<number>(0);
   const [dsi, setDsi] = useState<number>(0);
   const [dsiStatus, setDsiStatus] = useState<string>('Healthy');
-  const [remarkCategory, setRemarkCategory] = useState<string>('Low');
   const [risk, setRisk] = useState<'high' | 'medium' | 'low'>('low');
+  const [loadingRisk, setLoadingRisk] = useState(true);
 
   // Defect Density + KLOC
   const [defectDensityData, setDefectDensityData] = useState<any>(null);
@@ -344,86 +344,114 @@ const ProjectDetailScreen = () => {
     setRemarkError(null);
     setReopenError(null);
 
+    setLoadingRisk(true);
     setLoadingRemarkRatio(true);
-    try {
-      const response = await apiClient.get(ENDPOINTS.REMARK_RATIO(projectId));
-      const data = response.data?.data || {};
-      const percentage = data.ratioPercentage ?? 0;
-      const status = data.ratioStatus ?? 'Low';
-      setRemarkRatioPercentage(percentage);
-      setRemarkRatioCategory(status);
-      let color = Colors.success;
-      if (status === 'High') color = Colors.error;
-      else if (status === 'Medium') color = Colors.warning;
-      setRemarkRatioColor(color);
-      setRemarkCategory(status.toLowerCase());
-    } catch (error) {
-      setRemarkError('Failed to load remark ratio');
-      setRemarkCategory('low');
-      setRemarkRatioCategory('Low');
-      setRemarkRatioColor(Colors.success);
-    } finally {
-      setLoadingRemarkRatio(false);
-    }
-
-    try {
-      const response = await apiClient.get(ENDPOINTS.DEFECT_DENSITY(projectId));
-      const data = response.data?.data || {};
-      const density = data.defectDensity ?? 0;
-      const kloc = data.kloc ?? 0.1;
-      const totalDefects = data.totalDefects ?? 0;
-      setDefectDensityData({ kloc, totalDefects, defectDensity: density });
-      setDefectDensity(density);
-      if (!klocChanged) {
-        setKlocInput(kloc);
-      }
-    } catch (error) {
-      setDensityError('Failed to load defect density');
-      setDefectDensityData(null);
-    }
-
     setLoadingDsi(true);
-    try {
-      const response = await apiClient.get(ENDPOINTS.DEFECT_SEVERITY_INDEX(projectId));
-      const data = response.data?.data || {};
-      const dsiVal = data.dsiPercentage ?? 0;
-      const status = data.dsiStatus ?? 'Healthy';
-      setDsi(dsiVal);
-      setDsiStatus(status);
-    } catch (error) {
-      setDsiError('Failed to load DSI');
-      setDsi(0);
-      setDsiStatus('Unknown');
-    } finally {
-      setLoadingDsi(false);
-    }
-
     setLoadingReopen(true);
-    try {
-      const response = await apiClient.get(ENDPOINTS.REOPEN_SUMMARY(projectId));
-      const data = response.data || {};
-      setReopenedCount(data.reopenedCount ?? 0);
-      setNotReopenedCount(data.notReopenedCount ?? 0);
-    } catch (error) {
-      setReopenError('Failed to load reopen summary');
-      setReopenedCount(0);
-      setNotReopenedCount(0);
-    } finally {
-      setLoadingReopen(false);
-    }
 
-    const remarkRisk = (remarkCategory as 'high' | 'medium' | 'low') || 'low';
-    const densityValue = defectDensityData?.defectDensity ?? 0;
-    let densityRisk: 'high' | 'medium' | 'low' = 'low';
-    if (densityValue >= 10) densityRisk = 'high';
-    else if (densityValue >= 7) densityRisk = 'medium';
+    // Each metric fetch is self-contained and returns the value needed for the
+    // combined-risk calculation. Running them in parallel (instead of awaiting
+    // one after another) lets the risk badge resolve in roughly one request's
+    // time rather than the sum of all of them. Values are returned (not read
+    // back from state) because React state updates are async.
+    const fetchRemark = async (): Promise<string> => {
+      try {
+        const response = await apiClient.get(ENDPOINTS.REMARK_RATIO(projectId));
+        const data = response.data?.data || {};
+        const percentage = data.ratioPercentage ?? 0;
+        const status = data.ratioStatus ?? 'Low';
+        setRemarkRatioPercentage(percentage);
+        setRemarkRatioCategory(status);
+        let color = Colors.success;
+        if (status === 'High') color = Colors.error;
+        else if (status === 'Medium') color = Colors.warning;
+        setRemarkRatioColor(color);
+        return status;
+      } catch (error) {
+        setRemarkError('Failed to load remark ratio');
+        setRemarkRatioCategory('Low');
+        setRemarkRatioColor(Colors.success);
+        return 'Low';
+      } finally {
+        setLoadingRemarkRatio(false);
+      }
+    };
 
-    let dsiRisk: 'high' | 'medium' | 'low' = 'low';
-    if (dsiStatus === 'Critical' || dsiStatus === 'High Risk') dsiRisk = 'high';
-    else if (dsiStatus === 'Needs Attention') dsiRisk = 'medium';
+    const fetchDensity = async (): Promise<number> => {
+      try {
+        const response = await apiClient.get(ENDPOINTS.DEFECT_DENSITY(projectId));
+        const data = response.data?.data || {};
+        const density = data.defectDensity ?? 0;
+        const kloc = data.kloc ?? 0.1;
+        const totalDefects = data.totalDefects ?? 0;
+        setDefectDensityData({ kloc, totalDefects, defectDensity: density });
+        setDefectDensity(density);
+        if (!klocChanged) {
+          setKlocInput(kloc);
+        }
+        return density;
+      } catch (error) {
+        setDensityError('Failed to load defect density');
+        setDefectDensityData(null);
+        return 0;
+      }
+    };
 
-    const combined = getCombinedRisk(remarkRisk, densityRisk, dsiRisk);
+    const fetchDsi = async (): Promise<string> => {
+      try {
+        const response = await apiClient.get(ENDPOINTS.DEFECT_SEVERITY_INDEX(projectId));
+        const data = response.data?.data || {};
+        const dsiVal = data.dsiPercentage ?? 0;
+        const status = data.dsiStatus ?? 'Healthy';
+        setDsi(dsiVal);
+        setDsiStatus(status);
+        return status;
+      } catch (error) {
+        setDsiError('Failed to load DSI');
+        setDsi(0);
+        setDsiStatus('Unknown');
+        return 'Unknown';
+      } finally {
+        setLoadingDsi(false);
+      }
+    };
+
+    const fetchReopen = async (): Promise<void> => {
+      try {
+        const response = await apiClient.get(ENDPOINTS.REOPEN_SUMMARY(projectId));
+        const data = response.data || {};
+        setReopenedCount(data.reopenedCount ?? 0);
+        setNotReopenedCount(data.notReopenedCount ?? 0);
+      } catch (error) {
+        setReopenError('Failed to load reopen summary');
+        setReopenedCount(0);
+        setNotReopenedCount(0);
+      } finally {
+        setLoadingReopen(false);
+      }
+    };
+
+    // Reopen summary isn't part of the risk calc, so let it load in parallel
+    // without holding up the risk badge.
+    const reopenPromise = fetchReopen();
+
+    const [remarkStatusValue, densityValue, dsiStatusValue] = await Promise.all([
+      fetchRemark(),
+      fetchDensity(),
+      fetchDsi(),
+    ]);
+
+    // Highest risk across the three metrics determines the project's risk —
+    // identical logic to the Dashboard's per-project risk calculation.
+    const combined = getProjectRiskFromMetrics({
+      defectDensity: densityValue,
+      dsiStatus: dsiStatusValue,
+      remarkStatus: remarkStatusValue,
+    });
     setRisk(combined);
+    setLoadingRisk(false);
+
+    await reopenPromise;
   };
 
   // ---- KLOC handlers ----
@@ -560,7 +588,7 @@ const ProjectDetailScreen = () => {
           <Text style={styles.eyebrow}>Project</Text>
           <Text style={styles.projectName} numberOfLines={2}>{projectName}</Text>
         </View>
-        <RiskBadge risk={risk} />
+        <RiskBadge risk={risk} loading={loadingRisk} />
       </View>
 
       {loadingSeverity ? (
