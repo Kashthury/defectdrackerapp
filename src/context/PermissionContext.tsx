@@ -239,15 +239,30 @@ export const PermissionProvider: React.FC<{ children: React.ReactNode }> = ({
 
     (async () => {
       if (!user) {
-        // Signed out — wipe everything.
+        // Signed out — wipe everything AND close the readiness gate.
+        //
+        // Leaving `permissionsReady` = true here was the root cause of the
+        // "lands on Projects after logout/login" bug: the gate stayed open, so
+        // the next login mounted the TabNavigator immediately while permissions
+        // were momentarily empty (just cleared). `initialRouteName` then
+        // resolved to "Projects" and stuck, because React Navigation reads
+        // `initialRouteName` only once, at mount. Resetting to false forces the
+        // next login to wait for fresh permissions before the tabs mount.
         await clearPermissions();
         if (!cancelled) {
-          setPermissionsReady(true);
+          setPermissionsReady(false);
           setIsLoading(false);
         }
         return;
       }
 
+      // A (re)login is starting. Re-close the readiness gate so the tabs are
+      // never rendered from stale/empty permissions. It is reopened (set true)
+      // only after the latest permissions + accessible projects have loaded
+      // below, so every login — including one right after a logout or password
+      // change — recomputes the landing tab from fresh data and always starts
+      // on the Dashboard.
+      setPermissionsReady(false);
       setIsLoading(true);
 
       // The login response is authoritative for global permissions. Set it
