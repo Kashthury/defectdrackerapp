@@ -21,13 +21,19 @@ import { Chip } from '../../components/common/Chip';
 import { FadeInView } from '../../components/common/FadeInView';
 import { AnimatedPressable } from '../../components/common/AnimatedPressable';
 import { getAllProjects } from '../../services/projectService';
+import { ModuleDefinition } from '../../constants/permissions';
 
-// ---- Stable fallback (module-level, not recreated every render) ----
-const DEFAULT_PERMISSION_DATA = {
-  isAdmin: false,
-  userProjects: [] as any[],
-  isLoading: false,
+// Maps a module's colorKey to a concrete theme color for its option card.
+const MODULE_COLORS: Record<string, string> = {
+  primary: Colors.primary,
+  error: Colors.error,
+  success: Colors.success,
+  warning: Colors.warning,
+  info: Colors.info,
 };
+
+const getModuleColor = (mod: ModuleDefinition) =>
+  MODULE_COLORS[mod.colorKey ?? 'primary'] ?? Colors.primary;
 
 const formatDate = (dateString: string) => {
   if (!dateString) return 'N/A';
@@ -70,14 +76,15 @@ const ProjectScreen = () => {
 
   const navigation = useNavigation<any>();
 
-  // Safe hook usage with stable fallback (prevents infinite re-render loop)
-  let permissionData = DEFAULT_PERMISSION_DATA;
-  try {
-    permissionData = usePermission();
-  } catch (err) {
-    console.warn('⚠️ usePermission hook failed, using defaults:', err);
-  }
-  const { isAdmin, userProjects, isLoading: permissionLoading } = permissionData;
+  // Centralized permissions. The PermissionProvider always wraps the app, so
+  // this is safe to call directly (no fragile try/catch fallback needed).
+  const {
+    isAdmin,
+    userProjects,
+    isLoading: permissionLoading,
+    setCurrentProject,
+    getAccessibleModules,
+  } = usePermission();
 
   // Stable key derived from userProjects so the effect below only fires
   // when the actual project list changes, not on every render.
@@ -139,16 +146,16 @@ const ProjectScreen = () => {
 
   const openOptionModal = (project: any) => {
     setSelectedProject(project);
+    // Scope permissions to this project so the module options reflect the
+    // user's project-specific access. Force a fresh fetch so the options honor
+    // the latest permissions (e.g. changed on the web app), not stale cache.
+    setCurrentProject(project.id, { force: true });
     setOptionModalVisible(true);
   };
 
-  const handleOptionSelect = (type: 'testcases' | 'defects') => {
+  const handleOptionSelect = (module: ModuleDefinition) => {
     setOptionModalVisible(false);
-    if (type === 'defects') {
-      navigation.navigate('Defects', { projectId: selectedProject.id });
-    } else {
-      navigation.navigate('TestCases', { projectId: selectedProject.id });
-    }
+    navigation.navigate(module.route as never, { projectId: selectedProject?.id } as never);
   };
 
   const renderItem = ({ item, index }: { item: any; index: number }) => {
@@ -304,30 +311,100 @@ const ProjectScreen = () => {
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={() => {}}>
               <View style={styles.optionModal}>
-                <Text style={styles.modalSmallTitle}>Select Category</Text>
-                <Text style={styles.modalProjectName}>{selectedProject?.name}</Text>
+                {permissionLoading ? (
+                  <>
+                    <Text style={styles.modalSmallTitle}>Loading modules…</Text>
+                    <Text style={styles.modalProjectName}>{selectedProject?.name}</Text>
+                    <ActivityIndicator size="small" color={Colors.primary} style={styles.modalLoader} />
+                  </>
+                ) : (
+                  (() => {
+                    // Modules are resolved from the selected project's effective
+                    // permissions (user-level + project/role grants) — a module
+                    // (e.g. Defects) only appears if the user holds its read
+                    // permission (e.g. DEFECT_READ / TEST_CASE_READ).
+                    const modules = getAccessibleModules('current');
 
-                <View style={styles.optionsRow}>
-                  <AnimatedPressable
-                    style={[styles.optionCard, { borderColor: withAlpha(Colors.primary, 0.4) }]}
-                    onPress={() => handleOptionSelect('testcases')}
-                  >
-                    <View style={[styles.optionIcon, { backgroundColor: withAlpha(Colors.primary, 0.12) }]}>
-                      <Icon name="file-text" size={28} color={Colors.primary} />
-                    </View>
-                    <Text style={styles.optionLabel}>Testcases</Text>
-                  </AnimatedPressable>
+                    if (modules.length === 0) {
+                      return (
+                        <>
+                          <Text style={styles.modalSmallTitle}>No access</Text>
+                          <Text style={styles.modalProjectName}>{selectedProject?.name}</Text>
+                          <View style={styles.noAccessBox}>
+                            <View style={styles.noAccessIcon}>
+                              <Icon name="lock" size={26} color={Colors.textLight} />
+                            </View>
+                            <Text style={styles.noAccessText}>
+                              You don't have access to any modules for this project.
+                            </Text>
+                          </View>
+                        </>
+                      );
+                    }
 
-                  <AnimatedPressable
-                    style={[styles.optionCard, { borderColor: withAlpha(Colors.error, 0.4) }]}
-                    onPress={() => handleOptionSelect('defects')}
-                  >
-                    <View style={[styles.optionIcon, { backgroundColor: withAlpha(Colors.error, 0.12) }]}>
-                      <Icon name="alert-circle" size={28} color={Colors.error} />
-                    </View>
-                    <Text style={styles.optionLabel}>Defects</Text>
-                  </AnimatedPressable>
-                </View>
+                    const isSingle = modules.length === 1;
+
+                    return (
+                      <>
+                        <Text style={styles.modalSmallTitle}>
+                          {isSingle ? 'Open Module' : 'Select Category'}
+                        </Text>
+                        <Text style={styles.modalProjectName}>{selectedProject?.name}</Text>
+
+                        {isSingle ? (
+                          // Modern, full-width call-to-action card shown when the
+                          // user can access exactly one module for this project.
+                          (() => {
+                            const mod = modules[0];
+                            const color = getModuleColor(mod);
+                            return (
+                              <AnimatedPressable
+                                style={[styles.singleOptionCard, { borderColor: withAlpha(color, 0.35) }]}
+                                onPress={() => handleOptionSelect(mod)}
+                              >
+                                <View style={[styles.singleOptionIcon, { backgroundColor: withAlpha(color, 0.12) }]}>
+                                  <Icon name={mod.icon} size={30} color={color} />
+                                </View>
+                                <View style={styles.singleOptionText}>
+                                  <Text style={styles.singleOptionTitle}>{mod.label}</Text>
+                                  {mod.description ? (
+                                    <Text style={styles.singleOptionDesc}>{mod.description}</Text>
+                                  ) : null}
+                                </View>
+                                <View style={[styles.singleOptionArrow, { backgroundColor: color }]}>
+                                  <Icon name="arrow-right" size={18} color={Colors.white} />
+                                </View>
+                              </AnimatedPressable>
+                            );
+                          })()
+                        ) : (
+                          <View style={styles.optionsRow}>
+                            {modules.map((mod) => {
+                              const color = getModuleColor(mod);
+                              return (
+                                <AnimatedPressable
+                                  key={mod.key}
+                                  style={[styles.optionCard, { borderColor: withAlpha(color, 0.4) }]}
+                                  onPress={() => handleOptionSelect(mod)}
+                                >
+                                  <View style={[styles.optionIcon, { backgroundColor: withAlpha(color, 0.12) }]}>
+                                    <Icon name={mod.icon} size={28} color={color} />
+                                  </View>
+                                  <Text style={styles.optionLabel}>{mod.label}</Text>
+                                  {mod.description ? (
+                                    <Text style={styles.optionSubLabel} numberOfLines={2}>
+                                      {mod.description}
+                                    </Text>
+                                  ) : null}
+                                </AnimatedPressable>
+                              );
+                            })}
+                          </View>
+                        )}
+                      </>
+                    );
+                  })()
+                )}
               </View>
             </TouchableWithoutFeedback>
           </View>
@@ -516,13 +593,16 @@ const styles = StyleSheet.create({
   },
   optionCard: {
     flex: 1,
-    aspectRatio: 1,
+    minHeight: 150,
     backgroundColor: Colors.card,
     borderRadius: Radius.lg,
     borderWidth: 1.5,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.md,
     gap: Spacing.sm,
+    ...Shadows.soft,
   },
   optionIcon: {
     width: 52,
@@ -534,6 +614,73 @@ const styles = StyleSheet.create({
   optionLabel: {
     ...Typography.bodyBold,
     fontSize: 14,
+  },
+  optionSubLabel: {
+    ...Typography.caption,
+    fontSize: 11,
+    color: Colors.textLight,
+    textAlign: 'center',
+  },
+  // ---- Single-module (modern CTA) card ----
+  singleOptionCard: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    borderWidth: 1.5,
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    gap: Spacing.md,
+    ...Shadows.soft,
+  },
+  singleOptionIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: Radius.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  singleOptionText: {
+    flex: 1,
+  },
+  singleOptionTitle: {
+    ...Typography.cardTitle,
+    fontSize: 17,
+  },
+  singleOptionDesc: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  singleOptionArrow: {
+    width: 36,
+    height: 36,
+    borderRadius: Radius.pill,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalLoader: {
+    paddingVertical: Spacing.xl,
+  },
+  noAccessBox: {
+    alignItems: 'center',
+    paddingVertical: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  noAccessIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  noAccessText: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    paddingHorizontal: Spacing.md,
   },
 });
 

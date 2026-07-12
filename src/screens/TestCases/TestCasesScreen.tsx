@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,8 +12,10 @@ import {
 import { useRoute } from '@react-navigation/native';
 import { Colors } from '../../constants/colors';
 import { Typography } from '../../constants/typography';
+import { PERMISSIONS } from '../../constants/permissions';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
+import { usePermission } from '../../context/PermissionContext';
 import {
   getActiveRelease,
   getTestCases,
@@ -22,6 +24,7 @@ import {
   getProjectEmployees,
   reassignTestCase,
 } from '../../services/testCaseService';
+import { getReleases } from '../../services/releaseService';
 import { getSeverities, getPriorities } from '../../services/defectService';
 import { buildColorMap } from '../../utils/colorUtils';
 import {
@@ -53,6 +56,12 @@ const TestCasesScreen = () => {
   const projectId = params.projectId;
   const { user } = useAuth();
   const toast = useToast();
+  const { can, hasPermission } = usePermission();
+
+  // View permission is the gate for loading data. TEST_CASE_READ alone is enough
+  // to fetch and display ALL test cases for the release — it must not be
+  // conflated with assignment (which only decides the "My Test Cases" subset).
+  const canViewTestCases = hasPermission(PERMISSIONS.TEST_CASE_READ);
 
   const [activeTab, setActiveTab] = useState<'MY' | 'ALL'>('MY');
   const [testCases, setTestCases] = useState<TestCase[]>([]);
@@ -90,33 +99,77 @@ const TestCasesScreen = () => {
   }, [projectId]);
 
   useEffect(() => {
-    if (projectId && user?.id && activeRelease?.id) {
+    // Check the correct permission (TEST_CASE_READ) BEFORE loading data. Note we
+    // intentionally do NOT require `user?.id` here: having view permission is
+    // sufficient to fetch every test case in the release, so the "All Test
+    // Cases" tab populates even for a viewer with nothing assigned to them.
+    if (projectId && activeRelease?.id && canViewTestCases) {
       resetAndFetch();
     }
-  }, [projectId, filters, user?.id, activeRelease?.id]);
+  }, [projectId, filters, activeRelease?.id, canViewTestCases]);
+
+  // Resolve a release to load test cases from. We deliberately DON'T hard-depend
+  // on the dedicated "active release" endpoint: a user with TEST_CASE_READ but
+  // without release-level access (that endpoint can 403), or a project that has
+  // no release flagged "active", must still be able to fetch and view all test
+  // cases. So we try the active-release endpoint first, then transparently fall
+  // back to the project's release list — preferring an active release, else the
+  // most recent one. Test cases only fail to load if the project truly has none.
+  const resolveRelease = async (): Promise<Release | null> => {
+    const unwrapSingle = (raw: any): Release | null => {
+      let data = raw?.data?.data ?? raw?.data ?? null;
+      if (Array.isArray(data)) return data.length ? data[0] : null;
+      if (data && !Array.isArray(data) && Array.isArray(data.content)) {
+        return data.content.length ? data.content[0] : null;
+      }
+      return data && data.id ? data : null;
+    };
+
+    const pickFromList = (raw: any): Release | null => {
+      let list = raw?.data?.data ?? raw?.data ?? [];
+      if (list && !Array.isArray(list) && Array.isArray(list.content)) list = list.content;
+      if (!Array.isArray(list) || list.length === 0) return null;
+      const active = list.find(
+        (r: any) => r?.isActive || r?.active || String(r?.status).toUpperCase() === 'ACTIVE',
+      );
+      return (active || list[0]) as Release;
+    };
+
+    // 1) Preferred: the dedicated active-release endpoint.
+    try {
+      const res = await getActiveRelease(projectId);
+      const release = unwrapSingle(res);
+      if (release?.id) return release;
+      console.warn('⚠️ Active-release endpoint returned no usable release; falling back to release list.');
+    } catch (err) {
+      console.warn('⚠️ Active-release endpoint failed; falling back to release list.', err);
+    }
+
+    // 2) Fallback: the project's release list. Independent of "active" status and
+    //    of the active-release endpoint, so TEST_CASE_READ users aren't blocked.
+    try {
+      const res = await getReleases(projectId);
+      const release = pickFromList(res);
+      if (release?.id) return release;
+    } catch (err) {
+      console.warn('⚠️ Release-list fallback failed.', err);
+    }
+
+    return null;
+  };
 
   const fetchActiveReleaseAndOptions = async () => {
     if (!projectId) return;
     try {
-      const releaseResponse = await getActiveRelease(projectId);
-      let releaseData = releaseResponse.data?.data || releaseResponse.data;
-      
-      if (Array.isArray(releaseData)) {
-        if (releaseData.length === 0) {
-          toast.warning('No active release found.', 'No active release');
-          setLoading(false);
-          return;
-        }
-        releaseData = releaseData[0];
-      }
-      
-      if (!releaseData || !releaseData.id) {
-        toast.warning('No active release found.', 'No active release');
+      const release = await resolveRelease();
+
+      if (!release?.id) {
+        toast.warning('No release found for this project yet.', 'No release');
         setLoading(false);
         return;
       }
 
-      setActiveRelease(releaseData);
+      setActiveRelease(release);
 
       const safeFetch = async (apiCall: Promise<any>, listName: string) => {
         try {
@@ -139,8 +192,8 @@ const TestCasesScreen = () => {
       ]);
       setOptions({ modules, severities, priorities });
     } catch (error: any) {
-      console.error('❌ Failed to fetch active release:', error);
-      toast.error('Failed to load active release.');
+      console.error('❌ Failed to load release information:', error);
+      toast.error('Failed to load release information.');
       setLoading(false);
     }
   };
@@ -183,7 +236,10 @@ const TestCasesScreen = () => {
 
       if (!response || !response.data) throw new Error('Invalid response');
 
-      let rawTestCases = response.data.data;
+      // Tolerate the different envelopes the backend may return so a valid list
+      // is never dropped as "not an array":
+      //   { data: { data: [...] } } | { data: [...] } | { data: { content: [...] } }
+      let rawTestCases = response.data?.data ?? response.data ?? [];
       if (rawTestCases && !Array.isArray(rawTestCases) && Array.isArray(rawTestCases.content)) {
         rawTestCases = rawTestCases.content;
       }
@@ -223,6 +279,10 @@ const TestCasesScreen = () => {
           _raw: item
         };
       });
+
+      console.log(
+        `✅ Test cases fetched: ${newTestCases.length} (release ${activeRelease.id}, page ${pageNumber})`,
+      );
 
       if (isRefreshing || pageNumber === 0) {
         setTestCases(newTestCases);
@@ -266,6 +326,11 @@ const TestCasesScreen = () => {
   };
 
   const handleReassignInitiate = async (testCase: TestCase) => {
+    // Validate permission before opening the reassign flow / API calls.
+    if (!can.testCase.assign) {
+      toast.error('You do not have permission to reassign test cases.', 'Permission denied');
+      return;
+    }
     setSelectedTestCase(testCase);
     setTargetEmployeeId('');
     setQaEmployees([]);
@@ -307,6 +372,12 @@ const TestCasesScreen = () => {
 
   const handleReassignConfirm = async () => {
     if (!selectedTestCase || !targetEmployeeId || submittingReassign || !activeRelease?.id) return;
+    // Re-validate at confirm time (defense-in-depth against stale UI state).
+    if (!can.testCase.assign) {
+      toast.error('You do not have permission to reassign test cases.', 'Permission denied');
+      setReassignModalVisible(false);
+      return;
+    }
 
     setSubmittingReassign(true);
     try {
@@ -334,6 +405,22 @@ const TestCasesScreen = () => {
   const myTestCases = useMemo(() => testCases.filter(tc => String(tc.assignedToId) === String(user?.id)), [testCases, user?.id]);
   const allTestCases = useMemo(() => testCases, [testCases]);
   const visibleTestCases = activeTab === 'MY' ? myTestCases : allTestCases;
+
+  // View-only users (e.g. someone with TEST_CASE_READ but no assigned test
+  // cases) would otherwise land on the empty "My Test Cases" tab and think
+  // nothing exists. After the first load, if there are viewable test cases but
+  // none assigned to the user, switch to "All Test Cases" so the list shows.
+  // Runs once per screen instance; the user can still switch tabs freely after.
+  const didAutoSelectTab = useRef(false);
+  useEffect(() => {
+    if (loading || didAutoSelectTab.current) return;
+    if (testCases.length > 0) {
+      didAutoSelectTab.current = true;
+      if (myTestCases.length === 0) {
+        setActiveTab('ALL');
+      }
+    }
+  }, [loading, testCases.length, myTestCases.length]);
 
   const severityColorMap = useMemo(() => buildColorMap(options.severities), [options.severities]);
   const priorityColorMap = useMemo(() => buildColorMap(options.priorities), [options.priorities]);
@@ -389,8 +476,14 @@ const TestCasesScreen = () => {
           ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color={Colors.primary} style={{ marginVertical: 20 }} /> : null}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Icon name="search" size={48} color={Colors.borderStrong} />
-              <Text style={styles.emptyText}>No test cases found matching your criteria.</Text>
+              <Icon name={!activeRelease ? 'inbox' : 'search'} size={48} color={Colors.borderStrong} />
+              <Text style={styles.emptyText}>
+                {!activeRelease
+                  ? 'No release found for this project yet.'
+                  : activeTab === 'MY' && allTestCases.length > 0
+                  ? 'No test cases are assigned to you. Switch to "All Test Cases" to browse them.'
+                  : 'No test cases found matching your criteria.'}
+              </Text>
             </View>
           }
         />

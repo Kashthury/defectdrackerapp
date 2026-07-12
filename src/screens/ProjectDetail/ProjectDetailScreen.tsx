@@ -24,6 +24,7 @@ import { TimeLineChart } from '../../components/dashboard/TimeLineChart';
 import { projectReleaseCardView } from '../../api/releaseView/ProjectReleaseCardView';
 import { getUserProjects } from '../../services/projectService';
 import { getProjectRiskFromMetrics } from '../../utils/riskUtils';
+import { usePermission } from '../../context/PermissionContext';
 import { Colors } from '../../constants/colors';
 import { Typography } from '../../constants/typography';
 import { Spacing, Radius, Shadows } from '../../constants/theme';
@@ -38,6 +39,12 @@ import {
 const ProjectDetailScreen = () => {
   const route = useRoute();
   const initialProjectId = (route.params as any)?.projectId as number;
+
+  const { setCurrentProject, can } = usePermission();
+
+  // KLOC editing is a restricted, project-scoped operation. Only surface the
+  // editing controls when the user is permitted to change it.
+  const canEditKloc = can.kloc.update || can.project.update;
 
   // ---- ALL HOOKS ----
   const [projects, setProjects] = useState<any[]>([]);
@@ -119,6 +126,17 @@ const ProjectDetailScreen = () => {
   useEffect(() => {
     fetchProjects();
   }, []);
+
+  // Scope permissions to the active project so project-specific permissions are
+  // loaded/refreshed. This drives project switching: selecting a different
+  // project re-scopes and reloads its permissions.
+  useEffect(() => {
+    if (projectId) {
+      // Force a fresh permission fetch on project switch so scoped access
+      // reflects any changes made elsewhere without a logout/login.
+      setCurrentProject(projectId, { force: true });
+    }
+  }, [projectId, setCurrentProject]);
 
   useEffect(() => {
     if (projectId) {
@@ -463,6 +481,11 @@ const ProjectDetailScreen = () => {
 
   const handleKlocUpdate = async () => {
     if (isUpdatingRef.current || !klocChanged || !projectId) return;
+    // Validate permission before the KLOC update API call.
+    if (!canEditKloc) {
+      console.warn('Blocked KLOC update: missing permission');
+      return;
+    }
     isUpdatingRef.current = true;
     setUpdatingKloc(true);
     try {
@@ -481,6 +504,10 @@ const ProjectDetailScreen = () => {
 
   const handleCalculateKloc = async () => {
     if (isCalculatingRef.current) return;
+    if (!canEditKloc) {
+      setKlocModalError('You do not have permission to update KLOC.');
+      return;
+    }
     if (
       !klocModalForm.backendRepo ||
       !klocModalForm.frontendRepo ||
@@ -614,6 +641,7 @@ const ProjectDetailScreen = () => {
             onCalculateClick={() => setShowKlocModal(true)}
             klocChanged={klocChanged}
             updating={updatingKloc}
+            editable={canEditKloc}
           />
         ) : (
           <Text style={styles.noData}>No defect density data</Text>

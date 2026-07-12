@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { login as loginApi, logout as logoutApi } from '../services/authService';
+import { STORAGE_KEYS, SESSION_STORAGE_KEYS } from '../constants/storageKeys';
 
 interface User {
   id?: string | number;
@@ -28,8 +29,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const bootstrapAsync = async () => {
       try {
-        const token = await AsyncStorage.getItem('token');
-        const userString = await AsyncStorage.getItem('user');
+        const token = await AsyncStorage.getItem(STORAGE_KEYS.TOKEN);
+        const userString = await AsyncStorage.getItem(STORAGE_KEYS.USER);
         if (token && userString) {
           setUserToken(token);
           setUser(JSON.parse(userString));
@@ -68,12 +69,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         permissions: globalPermissions || [],
       };
 
+      // Wipe any leftover cached data from a previous session BEFORE storing the
+      // new session, so a fresh login always reloads everything from the server
+      // and no stale permissions/project selection can leak across accounts.
+      await AsyncStorage.removeMany(SESSION_STORAGE_KEYS);
+
       setUserToken(token);
       setUser(user);
-      await AsyncStorage.setItem('token', token);
-      await AsyncStorage.setItem('user', JSON.stringify(user));
+      await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, token);
+      await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
       if (refreshToken) {
-        await AsyncStorage.setItem('refreshToken', refreshToken);
+        await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
       }
 
       console.log('✅ Token saved, userToken state updated');
@@ -90,12 +96,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('❌ Logout error:', error);
     } finally {
-      // Clear storage regardless of API success
+      // Clear ALL cached session data regardless of API success: token, user,
+      // refresh token, the permission snapshot, and the selected project. This
+      // is the cache-invalidation step — clearing `user` also triggers the
+      // PermissionContext to reset its in-memory permission state. A subsequent
+      // login reloads everything fresh from the server.
       setUserToken(null);
       setUser(null);
-      await AsyncStorage.removeItem('token');
-      await AsyncStorage.removeItem('user');
-      await AsyncStorage.removeItem('refreshToken');
+      try {
+        await AsyncStorage.removeMany(SESSION_STORAGE_KEYS);
+      } catch (e) {
+        console.warn('⚠️ Failed to clear session storage on logout:', e);
+      }
     }
   };
 

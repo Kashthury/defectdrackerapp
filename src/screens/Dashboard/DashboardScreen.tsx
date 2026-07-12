@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Feather';
 import { getUserProjects, getProjectRisk } from '../../services/projectService';
 import { ProjectCard } from '../../components/project/ProjectCard';
@@ -22,6 +22,7 @@ import { Typography } from '../../constants/typography';
 import { Spacing, Radius } from '../../constants/theme';
 import { RiskLevel } from '../../utils/riskUtils';
 import { getRiskColor } from '../../utils/colorUtils';
+import { usePermission } from '../../context/PermissionContext';
 
 type RiskFilter = 'all' | 'high' | 'medium' | 'low';
 
@@ -49,6 +50,7 @@ const getCardSize = () => {
 
 const DashboardScreen = () => {
   const navigation = useNavigation<any>();
+  const { canAccessProject, refreshPermissions } = usePermission();
 
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,10 +63,15 @@ const DashboardScreen = () => {
     try {
       const response = await getUserProjects();
       const rawData = response?.data?.data || [];
-      const base = rawData.map((item: any) => ({
-        id: item.projectId,
-        name: item.projectName,
-      }));
+      const base = rawData
+        .map((item: any) => ({
+          id: item.projectId,
+          name: item.projectName,
+        }))
+        // Only surface projects the signed-in user is permitted to access.
+        // The endpoint already scopes to the user, and this is a second guard
+        // driven purely by the permission context (no hardcoded rules).
+        .filter((p: any) => canAccessProject(p.id));
 
       // Resolve each project's real risk from its underlying metrics
       // (Defect Density, Defect Severity Index, Defect-to-Remark ratio) in
@@ -93,6 +100,16 @@ const DashboardScreen = () => {
   };
 
   useEffect(() => { fetchProjects(); }, []);
+
+  // Whenever the dashboard gains focus (initial load, returning from a project,
+  // switching back to this tab), pull the latest permissions from the backend
+  // so the dashboard reflects access changes made elsewhere (e.g. the web app)
+  // without needing a logout/login. Runs silently in the background.
+  useFocusEffect(
+    useCallback(() => {
+      refreshPermissions();
+    }, [refreshPermissions]),
+  );
 
   const onRefresh = () => { setRefreshing(true); fetchProjects(); };
 

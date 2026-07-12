@@ -5,6 +5,10 @@ export const ENDPOINTS = {
   CHANGE_PASSWORD: '/auth/change-password',
   DASHBOARD: (projectId: number | string) => `/project/${projectId}/dashboard`,
   USER_PROJECTS: '/user/me/projects',
+  // Account-wide (global) permissions for the signed-in user. Used to refresh
+  // permissions from the backend without a full logout/login. NOTE: adjust this
+  // path if your backend exposes current-user permissions differently.
+  CURRENT_USER_PERMISSIONS: '/user/me/permissions',
   PROJECT_PERMISSIONS: (projectId: number | string) => `/user/me/projects/${projectId}/permissions`,
   DEFECT_SEVERITY_BREAKDOWN: (projectId: number | string) => `/project/${projectId}/defect/severity-breakdown`,
   DEFECT_DENSITY: (projectId: number | string) => `/project/${projectId}/defect-density`,

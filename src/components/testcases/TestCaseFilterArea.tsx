@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 16,
-    gap: 12,
+    gap: 16,
   },
   filterItem: {
     width: 140,

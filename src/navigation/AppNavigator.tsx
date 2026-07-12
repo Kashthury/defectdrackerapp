@@ -1,4 +1,5 @@
 import React from 'react';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Icon from 'react-native-vector-icons/Feather';
@@ -10,21 +11,51 @@ import ProjectSummaryScreen from '../screens/ProjectDetail/ProjectSummaryScreen'
 import TestCasesScreen from '../screens/TestCases/TestCasesScreen';
 import DefectsScreen from '../screens/Defects/DefectsScreen';
 import { Colors } from '../constants/colors';
-import { useAuth } from '../hooks/useAuth';
+import { usePermission } from '../context/PermissionContext';
+import { withProjectPermission } from '../components/common/ProtectedScreen';
+import { PERMISSIONS } from '../constants/permissions';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
-const TabNavigator = () => {
-  const { user } = useAuth();
+// Protected-navigation wrappers: these screens are project-scoped, so entering
+// them loads that project's permissions and blocks access (Access Denied) when
+// the user lacks the required read permission. Defined at module scope so the
+// component identity stays stable across renders.
+const ProtectedDefectsScreen = withProjectPermission(DefectsScreen, PERMISSIONS.DEFECT_READ);
+const ProtectedTestCasesScreen = withProjectPermission(TestCasesScreen, PERMISSIONS.TEST_CASE_READ);
 
-  // Example permission logic:
-  // If user has 'VIEW_DASHBOARD' permission or is ADMIN, show Dashboard.
-  const canViewDashboard = user?.role === 'ADMIN' || user?.permissions?.includes('VIEW_DASHBOARD') || true;
+const TabNavigator = () => {
+  const { isAdmin, globalCan, accessibleProjects, getAccessibleModules, permissionsReady } =
+    usePermission();
+
+  // Wait for the initial permission bootstrap before deciding the landing tab.
+  // Rendering the tabs before permissions are ready would compute the default
+  // route from empty permissions and strand the user on "Projects" even when
+  // they should land on the Dashboard. React Navigation only reads
+  // `initialRouteName` once, so it must be correct on first mount.
+  if (!permissionsReady) {
+    return (
+      <View style={styles.loader}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
+
+  // Dashboard is shown when the user can view it, has any accessible module, or
+  // is allocated to at least one project. This is fully permission-driven — no
+  // hardcoded "always true" anymore.
+  const canViewDashboard =
+    isAdmin ||
+    globalCan.dashboard.view ||
+    accessibleProjects.length > 0 ||
+    getAccessibleModules('global').length > 0;
 
   return (
     <Tab.Navigator
-      initialRouteName={canViewDashboard ? "Dashboard" : "Projects"}
+      // After login the user lands on the Dashboard by default whenever they can
+      // view it; only users without any dashboard access start on Projects.
+      initialRouteName={canViewDashboard ? 'Dashboard' : 'Projects'}
       screenOptions={({ route }) => ({
         tabBarIcon: ({ color, size }) => {
           let iconName = 'home';
@@ -90,15 +121,24 @@ const AppNavigator = () => (
     />
     <Stack.Screen
       name="TestCases"
-      component={TestCasesScreen}
+      component={ProtectedTestCasesScreen}
       options={{ title: 'Test Cases' }}
     />
     <Stack.Screen
       name="Defects"
-      component={DefectsScreen}
+      component={ProtectedDefectsScreen}
       options={{ title: 'Defects' }}
     />
   </Stack.Navigator>
 );
+
+const styles = StyleSheet.create({
+  loader: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.background,
+  },
+});
 
 export default AppNavigator;

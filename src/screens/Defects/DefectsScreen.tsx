@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import { Colors } from '../../constants/colors';
 import { Typography } from '../../constants/typography';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../context/ToastContext';
+import { usePermission } from '../../context/PermissionContext';
 import {
   getDefects,
   getProjectModules,
@@ -59,6 +60,7 @@ const DefectsScreen = () => {
   const projectId = params.projectId;
   const { user } = useAuth();
   const toast = useToast();
+  const { can } = usePermission();
 
   const [activeTab, setActiveTab] = useState<'MY' | 'ALL'>('MY');
   const [defects, setDefects] = useState<Defect[]>([]);
@@ -299,6 +301,11 @@ const DefectsScreen = () => {
   };
 
   const handleStatusChange = async (defect: Defect, targetStatus: any) => {
+    // Validate permission before hitting the status-change API.
+    if (!can.defect.statusUpdate) {
+      toast.error('You do not have permission to change defect status.', 'Permission denied');
+      return;
+    }
     try {
       const payload = buildDefectUpdatePayload(defect, { statusId: targetStatus.id });
       console.log('📡 Updating status. Payload:', JSON.stringify(payload));
@@ -321,6 +328,11 @@ const DefectsScreen = () => {
   };
 
   const handleReassignInitiate = async (defect: Defect) => {
+    // Validate permission before opening the reassign flow / API calls.
+    if (!can.defect.reassign) {
+      toast.error('You do not have permission to reassign defects.', 'Permission denied');
+      return;
+    }
     setSelectedDefect(defect);
     setTargetDeveloperId('');
     setReassignModalVisible(true);
@@ -356,6 +368,12 @@ const DefectsScreen = () => {
 
   const handleReassignConfirm = async () => {
     if (!selectedDefect || !targetDeveloperId) return;
+    // Re-validate at confirm time (defense-in-depth against stale UI state).
+    if (!can.defect.reassign) {
+      toast.error('You do not have permission to reassign defects.', 'Permission denied');
+      setReassignModalVisible(false);
+      return;
+    }
     try {
       const dev: any = subModuleDevelopers.find((d: any) => d.id === targetDeveloperId);
       const payload = buildDefectUpdatePayload(selectedDefect, { assignedTo: targetDeveloperId });
@@ -385,6 +403,20 @@ const DefectsScreen = () => {
 
   const allDefects = useMemo(() => defects, [defects]);
   const visibleDefects = activeTab === 'MY' ? myDefects : allDefects;
+
+  // A defect-viewer who has none assigned would otherwise land on the empty
+  // "My Defects" tab. After the first load, if nothing is assigned to the user
+  // but viewable defects exist, switch to "All Defects" so the list shows.
+  const didAutoSelectTab = useRef(false);
+  useEffect(() => {
+    if (loading || didAutoSelectTab.current) return;
+    if (defects.length > 0) {
+      didAutoSelectTab.current = true;
+      if (myDefects.length === 0) {
+        setActiveTab('ALL');
+      }
+    }
+  }, [loading, defects.length, myDefects.length]);
 
   // id -> backend color lookups so severity/priority chips use real hues even
   // when an individual defect payload doesn't inline its own color.
@@ -444,7 +476,11 @@ const DefectsScreen = () => {
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Icon name="search" size={48} color={Colors.borderStrong} />
-              <Text style={styles.emptyText}>No defects found matching your criteria.</Text>
+              <Text style={styles.emptyText}>
+                {activeTab === 'MY' && allDefects.length > 0
+                  ? 'No defects are assigned to you. Switch to "All Defects" to browse them.'
+                  : 'No defects found matching your criteria.'}
+              </Text>
             </View>
           }
         />

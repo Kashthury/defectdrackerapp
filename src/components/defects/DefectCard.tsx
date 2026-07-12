@@ -11,6 +11,7 @@ import { FadeInView } from '../common/FadeInView';
 import { AnimatedPressable } from '../common/AnimatedPressable';
 import { resolveChipColor } from '../../utils/colorUtils';
 import { getNextStatuses } from '../../services/defectService';
+import { usePermission } from '../../context/PermissionContext';
 
 interface DefectCardProps {
   defect: Defect;
@@ -33,15 +34,19 @@ export const DefectCard: React.FC<DefectCardProps> = ({
   priorityColorMap,
   index = 0,
 }) => {
+  const { can } = usePermission();
   const [nextStatuses, setNextStatuses] = useState<StatusTransition[]>([]);
   const [loadingStatus, setLoadingStatus] = useState(false);
 
+  // Only fetch/allow status transitions when the user can change status.
+  const canChangeStatus = isMyDefect && can.defect.statusUpdate;
+
   useEffect(() => {
-    if (isMyDefect && defect?.statusId) {
+    if (canChangeStatus && defect?.statusId) {
       fetchNextStatuses();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defect?.statusId, isMyDefect]);
+  }, [defect?.statusId, canChangeStatus]);
 
   const fetchNextStatuses = async () => {
     if (!defect?.statusId) return;
@@ -98,7 +103,8 @@ export const DefectCard: React.FC<DefectCardProps> = ({
             <Text style={styles.typeText}>{defect.defectTypeName}</Text>
           </View>
           <View style={styles.headerRight}>
-            {isMyDefect ? (
+            {canChangeStatus ? (
+              // DEFECT_STATUS_CHANGE controls the status-change dropdown.
               <Dropdown
                 items={statusItems}
                 selectedValue={defect.statusId}
@@ -157,10 +163,13 @@ export const DefectCard: React.FC<DefectCardProps> = ({
             <Icon name="package" size={14} color={Colors.textSecondary} />
             <Text style={styles.releaseText} numberOfLines={1}>{defect.releaseName}</Text>
           </View>
-          <AnimatedPressable style={styles.reassignBtn} onPress={() => onReassign(defect)}>
-            <Icon name="user-plus" size={15} color={Colors.primary} />
-            <Text style={styles.reassignText}>Reassign</Text>
-          </AnimatedPressable>
+          {/* DEFECT_ASSIGN_DEVELOPER controls the reassign action. */}
+          {can.defect.reassign && (
+            <AnimatedPressable style={styles.reassignBtn} onPress={() => onReassign(defect)}>
+              <Icon name="user-plus" size={15} color={Colors.primary} />
+              <Text style={styles.reassignText}>Reassign</Text>
+            </AnimatedPressable>
+          )}
         </View>
       </View>
     </FadeInView>

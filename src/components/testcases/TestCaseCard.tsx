@@ -9,6 +9,7 @@ import { Chip } from '../common/Chip';
 import { FadeInView } from '../common/FadeInView';
 import { AnimatedPressable } from '../common/AnimatedPressable';
 import { resolveChipColor } from '../../utils/colorUtils';
+import { usePermission } from '../../context/PermissionContext';
 
 interface TestCaseCardProps {
   testCase: TestCase;
@@ -27,6 +28,8 @@ export const TestCaseCard: React.FC<TestCaseCardProps> = ({
   priorityColorMap,
   index = 0,
 }) => {
+  const { can } = usePermission();
+
   if (!testCase) return null;
 
   const severityColor = resolveChipColor(
@@ -105,10 +108,13 @@ export const TestCaseCard: React.FC<TestCaseCardProps> = ({
             <Icon name="package" size={14} color={Colors.textSecondary} />
             <Text style={styles.releaseText} numberOfLines={1}>{testCase.releaseName}</Text>
           </View>
-          <AnimatedPressable style={styles.reassignBtn} onPress={() => onReassign(testCase)}>
-            <Icon name="user-plus" size={15} color={Colors.primary} />
-            <Text style={styles.reassignText}>Reassign</Text>
-          </AnimatedPressable>
+          {/* TEST_CASE_ASSIGN controls the reassign action. */}
+          {can.testCase.assign && (
+            <AnimatedPressable style={styles.reassignBtn} onPress={() => onReassign(testCase)}>
+              <Icon name="user-plus" size={15} color={Colors.primary} />
+              <Text style={styles.reassignText}>Reassign</Text>
+            </AnimatedPressable>
+          )}
         </View>
       </View>
     </FadeInView>

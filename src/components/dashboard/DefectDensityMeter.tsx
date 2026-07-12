@@ -12,6 +12,11 @@ interface DefectDensityMeterProps {
   onCalculateClick: () => void;
   klocChanged: boolean;
   updating: boolean;
+  /**
+   * When false, the KLOC input/update/calculate controls are hidden and only
+   * the read-only gauge is shown. Driven by the KLOC_UPDATE permission.
+   */
+  editable?: boolean;
 }
 
 export const DefectDensityMeter: React.FC<DefectDensityMeterProps> = ({
@@ -22,6 +27,7 @@ export const DefectDensityMeter: React.FC<DefectDensityMeterProps> = ({
   onCalculateClick,
   klocChanged,
   updating,
+  editable = true,
 }) => {
   const density = Math.max(0, Math.min(defectDensity, 15));
   const valueToAngle = (value: number) => -90 + (value / 15) * 180;
@@ -106,32 +112,39 @@ export const DefectDensityMeter: React.FC<DefectDensityMeterProps> = ({
         </Svg>
       </View>
 
-      <View style={styles.inputRow}>
-        <Text style={[Typography.overline, styles.klocLabel]}>KLOC</Text>
-        <TextInput
-          style={[Typography.body, styles.klocInput]}
-          keyboardType="decimal-pad"
-          value={klocInput.toString()}
-          onChangeText={onKlocInputChange}
-        />
-        <TouchableOpacity
-          style={[
-            styles.updateButton,
-            isButtonDisabled ? styles.updateDisabled : styles.updateActive,
-          ]}
-          onPress={onKlocUpdate}
-          disabled={isButtonDisabled}
-        >
-          {updating ? (
-            <ActivityIndicator size="small" color={Colors.white} />
-          ) : (
-            <Text style={styles.updateIcon}>✓</Text>
-          )}
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.calculateButton} onPress={onCalculateClick}>
-          <Text style={[Typography.label, styles.calculateText]}>Calculate</Text>
-        </TouchableOpacity>
-      </View>
+      {editable ? (
+        <View style={styles.inputRow}>
+          <Text style={[Typography.overline, styles.klocLabel]}>KLOC</Text>
+          <TextInput
+            style={[Typography.body, styles.klocInput]}
+            keyboardType="decimal-pad"
+            value={klocInput.toString()}
+            onChangeText={onKlocInputChange}
+          />
+          <TouchableOpacity
+            style={[
+              styles.updateButton,
+              isButtonDisabled ? styles.updateDisabled : styles.updateActive,
+            ]}
+            onPress={onKlocUpdate}
+            disabled={isButtonDisabled}
+          >
+            {updating ? (
+              <ActivityIndicator size="small" color={Colors.white} />
+            ) : (
+              <Text style={styles.updateIcon}>✓</Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.calculateButton} onPress={onCalculateClick}>
+            <Text style={[Typography.label, styles.calculateText]}>Calculate</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.readonlyRow}>
+          <Text style={[Typography.overline, styles.klocLabel]}>KLOC</Text>
+          <Text style={[Typography.bodyBold, styles.klocReadonly]}>{klocInput.toString()}</Text>
+        </View>
+      )}
     </View>
   );
 };
@@ -173,4 +186,6 @@ const styles = StyleSheet.create({
     borderColor: Colors.primaryLight
   },
   calculateText: { color: Colors.primary, fontSize: 13, textTransform: 'none' },
+  readonlyRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 8 },
+  klocReadonly: { color: Colors.text },
 });
