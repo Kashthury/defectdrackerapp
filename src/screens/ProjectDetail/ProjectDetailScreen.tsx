@@ -25,6 +25,7 @@ import { projectReleaseCardView } from '../../api/releaseView/ProjectReleaseCard
 import { getUserProjects } from '../../services/projectService';
 import { getCombinedRisk } from '../../utils/riskUtils';
 import { Colors } from '../../constants/colors';
+import { Typography } from '../../constants/typography';
 import { ENDPOINTS } from '../../constants/endpoints';
 import apiClient from '../../lib/api';
 import {
@@ -683,34 +684,38 @@ const ProjectDetailScreen = () => {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Calculate KLOC from GitHub</Text>
+            <Text style={[Typography.heading, styles.modalTitle]}>Calculate KLOC from GitHub</Text>
             <TextInput
-              style={styles.modalInput}
+              style={[Typography.body, styles.modalInput]}
               placeholder="Backend Repo URL"
+              placeholderTextColor={Colors.textLight}
               value={klocModalForm.backendRepo}
               onChangeText={(text) =>
                 setKlocModalForm((p) => ({ ...p, backendRepo: text }))
               }
             />
             <TextInput
-              style={styles.modalInput}
+              style={[Typography.body, styles.modalInput]}
               placeholder="Frontend Repo URL"
+              placeholderTextColor={Colors.textLight}
               value={klocModalForm.frontendRepo}
               onChangeText={(text) =>
                 setKlocModalForm((p) => ({ ...p, frontendRepo: text }))
               }
             />
             <TextInput
-              style={styles.modalInput}
+              style={[Typography.body, styles.modalInput]}
               placeholder="GitHub Username"
+              placeholderTextColor={Colors.textLight}
               value={klocModalForm.githubUsername}
               onChangeText={(text) =>
                 setKlocModalForm((p) => ({ ...p, githubUsername: text }))
               }
             />
             <TextInput
-              style={styles.modalInput}
+              style={[Typography.body, styles.modalInput]}
               placeholder="GitHub Token"
+              placeholderTextColor={Colors.textLight}
               secureTextEntry
               value={klocModalForm.githubToken}
               onChangeText={(text) =>
@@ -718,7 +723,7 @@ const ProjectDetailScreen = () => {
               }
             />
             {klocModalError && (
-              <Text style={styles.modalError}>{klocModalError}</Text>
+              <Text style={[Typography.errorText, styles.modalError]}>{klocModalError}</Text>
             )}
             <View style={styles.modalButtons}>
               <TouchableOpacity
@@ -731,14 +736,14 @@ const ProjectDetailScreen = () => {
                 }}
                 disabled={calculatingKloc}
               >
-                <Text style={styles.buttonText}>Cancel</Text>
+                <Text style={[Typography.buttonText, styles.cancelButtonText]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalButton, styles.calculateButton]}
                 onPress={handleCalculateKloc}
                 disabled={calculatingKloc}
               >
-                <Text style={styles.buttonText}>
+                <Text style={Typography.buttonText}>
                   {calculatingKloc ? 'Calculating...' : 'Calculate'}
                 </Text>
               </TouchableOpacity>
@@ -834,24 +839,36 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     elevation: 5,
   },
-  modalTitle: { fontSize: 22, fontWeight: 'bold', color: Colors.text, marginBottom: 20, textAlign: 'center' },
+  modalTitle: { marginBottom: 24, textAlign: 'center' },
   modalInput: {
     borderWidth: 1,
     borderColor: Colors.border,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingVertical: 12,
     paddingHorizontal: 16,
-    fontSize: 16,
     marginBottom: 16,
     backgroundColor: Colors.background,
     color: Colors.text,
+    fontSize: 15,
   },
-  modalError: { color: Colors.error, fontSize: 13, marginBottom: 12, textAlign: 'center' },
-  modalButtons: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 },
-  modalButton: { paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12, marginLeft: 12 },
-  cancelButton: { backgroundColor: '#F3F4F6' },
-  calculateButton: { backgroundColor: Colors.primary },
+  modalError: { marginBottom: 16, textAlign: 'center' },
+  modalButtons: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8, gap: 12 },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 50
+  },
+  cancelButton: {
+    backgroundColor: Colors.white,
+    borderWidth: 1.5,
+    borderColor: Colors.borderStrong
+  },
+  calculateButton: { backgroundColor: Colors.primary, elevation: 2 },
   buttonText: { fontWeight: '700', fontSize: 15, color: Colors.white },
+  cancelButtonText: { color: Colors.textSecondary, fontWeight: '700' },
 });
 
 export default ProjectDetailScreen;

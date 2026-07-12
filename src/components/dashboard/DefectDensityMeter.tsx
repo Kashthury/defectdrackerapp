@@ -1,6 +1,8 @@
 import React from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import Svg, { Path, G, Circle, Line, Text as SvgText, Polygon } from 'react-native-svg';
+import { Colors } from '../../constants/colors';
+import { Typography } from '../../constants/typography';
 
 interface DefectDensityMeterProps {
   defectDensity: number;
@@ -9,7 +11,7 @@ interface DefectDensityMeterProps {
   onKlocUpdate: () => void;
   onCalculateClick: () => void;
   klocChanged: boolean;
-  updating: boolean; // required, not optional
+  updating: boolean;
 }
 
 export const DefectDensityMeter: React.FC<DefectDensityMeterProps> = ({
@@ -25,13 +27,13 @@ export const DefectDensityMeter: React.FC<DefectDensityMeterProps> = ({
   const valueToAngle = (value: number) => -90 + (value / 15) * 180;
   const angle = valueToAngle(density);
 
-  let zoneColor = '#22c55e';
+  let zoneColor = Colors.success;
   let zoneLabel = 'Low';
   if (density > 10) {
-    zoneColor = '#ef4444';
+    zoneColor = Colors.error;
     zoneLabel = 'High';
   } else if (density > 7) {
-    zoneColor = '#facc15';
+    zoneColor = Colors.warning;
     zoneLabel = 'Medium';
   }
 
@@ -51,9 +53,9 @@ export const DefectDensityMeter: React.FC<DefectDensityMeterProps> = ({
   };
 
   const zones = [
-    { start: 0, end: 7, color: '#22c55e' },
-    { start: 7, end: 10, color: '#facc15' },
-    { start: 10, end: 15, color: '#ef4444' },
+    { start: 0, end: 7, color: Colors.success },
+    { start: 7, end: 10, color: Colors.warning },
+    { start: 10, end: 15, color: Colors.error },
   ];
 
   const cx = 100;
@@ -61,7 +63,6 @@ export const DefectDensityMeter: React.FC<DefectDensityMeterProps> = ({
   const radius = 70;
   const strokeWidth = 16;
 
-  // Needle triangle
   const tip = polarToCartesian(cx, cy, radius - 6, angle);
   const baseRadius = 14;
   const baseLeft = polarToCartesian(cx, cy, baseRadius, angle - 90);
@@ -70,7 +71,6 @@ export const DefectDensityMeter: React.FC<DefectDensityMeterProps> = ({
   const baseRightNarrow = { x: (baseRight.x + cx) / 2, y: (baseRight.y + cy) / 2 };
   const needlePoints = `${tip.x},${tip.y} ${baseLeftNarrow.x},${baseLeftNarrow.y} ${baseRightNarrow.x},${baseRightNarrow.y}`;
 
-  // ✅ Button disabled if NO change OR currently updating
   const isButtonDisabled = !klocChanged || updating;
 
   return (
@@ -89,51 +89,27 @@ export const DefectDensityMeter: React.FC<DefectDensityMeterProps> = ({
           <Path
             d={describeArc(cx, cy, radius, valueToAngle(0), valueToAngle(15))}
             fill="none"
-            stroke="#e5e7eb"
+            stroke={Colors.border}
             strokeWidth={strokeWidth}
           />
-          {zones.map((zone) => {
-            if (zone.start === zone.end) return null;
-            return (
-              <Path
-                key={zone.start}
-                d={describeArc(cx, cy, radius, valueToAngle(zone.start), valueToAngle(zone.end))}
-                fill="none"
-                stroke={zone.color}
-                strokeWidth={strokeWidth}
-              />
-            );
-          })}
-          <Polygon points={needlePoints} fill="#1e293b" />
-          <Circle cx={cx} cy={cy} r={7} fill="#1e293b" />
-          {[0, 7, 10].map((tick) => {
-            const tickAngle = valueToAngle(tick);
-            const start = polarToCartesian(cx, cy, radius, tickAngle);
-            const end = polarToCartesian(cx, cy, radius + 10, tickAngle);
-            const labelPos = polarToCartesian(cx, cy, radius + 22, tickAngle);
-            return (
-              <G key={tick}>
-                <Line x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke="#64748b" strokeWidth="2" />
-                <SvgText
-                  x={labelPos.x}
-                  y={labelPos.y + 4}
-                  fontSize="12"
-                  fill="#64748b"
-                  textAnchor="middle"
-                  fontWeight="500"
-                >
-                  {tick}
-                </SvgText>
-              </G>
-            );
-          })}
+          {zones.map((zone) => (
+            <Path
+              key={zone.start}
+              d={describeArc(cx, cy, radius, valueToAngle(zone.start), valueToAngle(zone.end))}
+              fill="none"
+              stroke={zone.color}
+              strokeWidth={strokeWidth}
+            />
+          ))}
+          <Polygon points={needlePoints} fill={Colors.text} />
+          <Circle cx={cx} cy={cy} r={7} fill={Colors.text} />
         </Svg>
       </View>
 
       <View style={styles.inputRow}>
-        <Text style={styles.klocLabel}>KLOC:</Text>
+        <Text style={[Typography.overline, styles.klocLabel]}>KLOC</Text>
         <TextInput
-          style={styles.klocInput}
+          style={[Typography.body, styles.klocInput]}
           keyboardType="decimal-pad"
           value={klocInput.toString()}
           onChangeText={onKlocInputChange}
@@ -147,13 +123,13 @@ export const DefectDensityMeter: React.FC<DefectDensityMeterProps> = ({
           disabled={isButtonDisabled}
         >
           {updating ? (
-            <ActivityIndicator size="small" color="#ffffff" />
+            <ActivityIndicator size="small" color={Colors.white} />
           ) : (
             <Text style={styles.updateIcon}>✓</Text>
           )}
         </TouchableOpacity>
         <TouchableOpacity style={styles.calculateButton} onPress={onCalculateClick}>
-          <Text style={styles.calculateText}>Calculate KLOC</Text>
+          <Text style={[Typography.label, styles.calculateText]}>Calculate</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -161,18 +137,40 @@ export const DefectDensityMeter: React.FC<DefectDensityMeterProps> = ({
 };
 
 const styles = StyleSheet.create({
-  container: { paddingVertical: 8, alignItems: 'center' },
-  valueRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', marginBottom: 4 },
-  densityValue: { fontSize: 28, fontWeight: 'bold' },
-  zoneLabel: { fontSize: 16, fontWeight: '600', marginLeft: 12 },
-  svgWrapper: { marginVertical: 4 },
-  inputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8, flexWrap: 'wrap', justifyContent: 'center' },
-  klocLabel: { fontSize: 14, fontWeight: '500', color: '#475569', marginRight: 8 },
-  klocInput: { width: 60, borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 6, paddingVertical: 4, paddingHorizontal: 8, fontSize: 14, textAlign: 'center', backgroundColor: '#fff' },
-  updateButton: { marginLeft: 8, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, minWidth: 36, alignItems: 'center' },
-  updateActive: { backgroundColor: '#22c55e' },
-  updateDisabled: { backgroundColor: '#94a3b8' },
-  updateIcon: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  calculateButton: { marginLeft: 12, paddingHorizontal: 14, paddingVertical: 6, backgroundColor: '#e0f2fe', borderRadius: 20, borderWidth: 1, borderColor: '#38bdf8' },
-  calculateText: { color: '#0284c7', fontWeight: '600', fontSize: 13 },
+  container: { paddingVertical: 12, alignItems: 'center' },
+  valueRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', marginBottom: 8 },
+  densityValue: { fontSize: 32, fontWeight: 'bold' },
+  zoneLabel: { ...Typography.heading, fontSize: 18, marginLeft: 12 },
+  svgWrapper: { marginVertical: 8 },
+  inputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 8 },
+  klocLabel: { marginRight: 4, color: Colors.textSecondary },
+  klocInput: {
+    width: 65,
+    height: 40,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 8,
+    textAlign: 'center',
+    backgroundColor: Colors.white,
+    color: Colors.text
+  },
+  updateButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  updateActive: { backgroundColor: Colors.success },
+  updateDisabled: { backgroundColor: Colors.borderStrong },
+  updateIcon: { color: Colors.white, fontWeight: 'bold', fontSize: 20 },
+  calculateButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: Colors.primarySoft,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.primaryLight
+  },
+  calculateText: { color: Colors.primary, fontSize: 13, textTransform: 'none' },
 });

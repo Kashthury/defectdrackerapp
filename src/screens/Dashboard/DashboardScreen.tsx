@@ -11,13 +11,31 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { getUserProjects } from '../../services/projectService';
+import Icon from 'react-native-vector-icons/Feather';
+import { getUserProjects, getProjectRisk } from '../../services/projectService';
 import { ProjectCard } from '../../components/project/ProjectCard';
 import { RiskSummary } from '../../components/dashboard/RiskSummary';
 import { Colors } from '../../constants/colors';
 import { Typography } from '../../constants/typography';
+import { RiskLevel } from '../../utils/riskUtils';
 
 type RiskFilter = 'all' | 'high' | 'medium' | 'low';
+
+const FILTER_ICONS: Record<RiskFilter, string> = {
+  all: 'grid',
+  high: 'alert-octagon',
+  medium: 'alert-triangle',
+  low: 'check-circle',
+};
+
+const countByRisk = (list: { risk: RiskLevel }[]) =>
+  list.reduce(
+    (acc, p) => {
+      acc[p.risk] = (acc[p.risk] ?? 0) + 1;
+      return acc;
+    },
+    { high: 0, medium: 0, low: 0 },
+  );
 
 const { width: screenWidth } = Dimensions.get('window');
 const GRID_SPACING = 20;
@@ -39,14 +57,23 @@ const DashboardScreen = () => {
     try {
       const response = await getUserProjects();
       const rawData = response?.data?.data || [];
-      const mapped = rawData.map((item: any) => ({
+      const base = rawData.map((item: any) => ({
         id: item.projectId,
         name: item.projectName,
-        risk: 'low', // Replace with real risk later
       }));
-      setProjects(mapped);
-      const counts = { high: 0, medium: 0, low: mapped.length };
-      setRiskCounts(counts);
+
+      // Resolve each project's real risk from its underlying metrics
+      // (Defect Density, Defect Severity Index, Defect-to-Remark ratio) in
+      // parallel. Highest metric risk determines the project's risk level.
+      const withRisk = await Promise.all(
+        base.map(async (p: any) => ({
+          ...p,
+          risk: await getProjectRisk(p.id),
+        })),
+      );
+
+      setProjects(withRisk);
+      setRiskCounts(countByRisk(withRisk));
       setError(null);
     } catch (err: any) {
       if (err.message === 'Network Error') {
@@ -122,20 +149,38 @@ const DashboardScreen = () => {
         <View style={styles.sectionHeader}>
           <Text style={Typography.heading}>Projects</Text>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterBar}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.filterBar}
+            contentContainerStyle={styles.filterBarContent}
+          >
             {(['all', 'high', 'medium', 'low'] as RiskFilter[]).map((level) => {
               const isActive = filterRisk === level;
               const baseColor = getFilterColor(level);
               return (
                 <TouchableOpacity
                   key={level}
+                  activeOpacity={0.8}
                   style={[
                     styles.filterChip,
-                    isActive && { backgroundColor: baseColor, borderColor: baseColor },
+                    { borderColor: baseColor },
+                    isActive && { backgroundColor: baseColor },
                   ]}
                   onPress={() => setFilterRisk(level)}
                 >
-                  <Text style={[styles.filterChipText, isActive && { color: Colors.white }]}>
+                  <Icon
+                    name={FILTER_ICONS[level]}
+                    size={15}
+                    color={isActive ? Colors.white : baseColor}
+                    style={styles.filterChipIcon}
+                  />
+                  <Text
+                    style={[
+                      styles.filterChipText,
+                      { color: isActive ? Colors.white : baseColor },
+                    ]}
+                  >
                     {level}
                   </Text>
                 </TouchableOpacity>
@@ -196,21 +241,27 @@ const styles = StyleSheet.create({
   },
   filterBar: {
     marginTop: 12,
+  },
+  filterBarContent: {
     flexDirection: 'row',
+    paddingRight: 24,
   },
   filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingVertical: 9,
+    borderRadius: 22,
     backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    marginRight: 8,
+    borderWidth: 1.5,
+    marginRight: 10,
+  },
+  filterChipIcon: {
+    marginRight: 6,
   },
   filterChipText: {
     ...Typography.caption,
-    fontWeight: '700',
-    color: Colors.textSecondary,
+    fontWeight: '800',
     textTransform: 'capitalize',
   },
   grid: {

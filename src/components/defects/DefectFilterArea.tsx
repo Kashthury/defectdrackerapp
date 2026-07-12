@@ -152,6 +152,20 @@ export const DefectFilterArea: React.FC<FilterAreaProps> = ({
               keyName="statusId"
               items={options.statuses.map(s => ({ label: s.name, value: s.id }))}
             />
+
+            <FilterItem
+              label="Assigned To"
+              placeholder="Assigned To"
+              keyName="assignedToId"
+              items={options.developers.map((d: any) => ({ label: d.name, value: d.id }))}
+            />
+
+            <FilterItem
+              label="Entered By"
+              placeholder="Entered By"
+              keyName="enteredById"
+              items={options.developers.map((d: any) => ({ label: d.name, value: d.id }))}
+            />
           </ScrollView>
         </View>
       )}

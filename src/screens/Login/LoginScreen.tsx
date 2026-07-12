@@ -29,16 +29,17 @@ const LoginScreen = () => {
 
   const validate = () => {
     let valid = true;
-    if (!email.trim()) {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
       setEmailError('Email is required');
       valid = false;
-    } else if (!/\S+@\S+\.\S+/.test(email)) {
+    } else if (!/^\S+@\S+\.\S+$/.test(trimmedEmail)) {
       setEmailError('Invalid email format');
       valid = false;
     } else {
       setEmailError('');
     }
-    if (!password.trim()) {
+    if (!password) {
       setPasswordError('Password is required');
       valid = false;
     } else {
@@ -51,7 +52,7 @@ const LoginScreen = () => {
     if (!validate()) return;
     setLoading(true);
     try {
-      await signIn(email, password);
+      await signIn(email.trim(), password);
       // Navigation happens automatically once the auth token is set.
     } catch (error: any) {
       const status = error?.response?.status;

@@ -2,10 +2,10 @@ import api from '../lib/api';
 import { ENDPOINTS } from '../constants/endpoints';
 
 export const login = (email: string, password: string) =>
-  api.post(ENDPOINTS.LOGIN, { email, password });
+  api.post(ENDPOINTS.LOGIN, { email: email.trim(), password });
 
 export const forgotPassword = (email: string) =>
-  api.post(ENDPOINTS.FORGOT_PASSWORD, { email });
+  api.post(ENDPOINTS.FORGOT_PASSWORD, { email: email.trim() });
 
 export const resetPassword = (token: string, newPassword: string) =>
   api.post(ENDPOINTS.RESET_PASSWORD, { token, newPassword });
