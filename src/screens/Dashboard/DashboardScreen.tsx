@@ -15,9 +15,13 @@ import Icon from 'react-native-vector-icons/Feather';
 import { getUserProjects, getProjectRisk } from '../../services/projectService';
 import { ProjectCard } from '../../components/project/ProjectCard';
 import { RiskSummary } from '../../components/dashboard/RiskSummary';
+import { Chip } from '../../components/common/Chip';
+import { FadeInView } from '../../components/common/FadeInView';
 import { Colors } from '../../constants/colors';
 import { Typography } from '../../constants/typography';
+import { Spacing, Radius } from '../../constants/theme';
 import { RiskLevel } from '../../utils/riskUtils';
+import { getRiskColor } from '../../utils/colorUtils';
 
 type RiskFilter = 'all' | 'high' | 'medium' | 'low';
 
@@ -100,14 +104,14 @@ const DashboardScreen = () => {
     (p) => filterRisk === 'all' || p.risk === filterRisk
   );
 
-  const getFilterColor = (level: RiskFilter) => {
-    switch (level) {
-      case 'high': return Colors.error;
-      case 'medium': return Colors.warning;
-      case 'low': return Colors.success;
-      default: return Colors.primary;
-    }
-  };
+  const getFilterColor = (level: RiskFilter) =>
+    level === 'all' ? Colors.primary : getRiskColor(level);
+
+  // Tapping a risk summary card toggles that risk filter on/off.
+  const handleRiskSelect = (level: RiskLevel) =>
+    setFilterRisk((prev) => (prev === level ? 'all' : level));
+
+  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
   const cardSize = getCardSize();
 
@@ -139,15 +143,27 @@ const DashboardScreen = () => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
         }
       >
-        <View style={styles.header}>
+        <FadeInView style={styles.header}>
+          <Text style={styles.eyebrow}>Overview</Text>
           <Text style={Typography.title}>Dashboard</Text>
-          <Text style={Typography.subtitle}>Summary of your defect tracking</Text>
-        </View>
+          <Text style={[Typography.subtitle, styles.subheading]}>
+            Track defect risk across your projects
+          </Text>
+        </FadeInView>
 
-        <RiskSummary riskCounts={riskCounts} />
+        <RiskSummary
+          riskCounts={riskCounts}
+          activeRisk={filterRisk}
+          onSelectRisk={handleRiskSelect}
+        />
 
         <View style={styles.sectionHeader}>
-          <Text style={Typography.heading}>Projects</Text>
+          <View style={styles.sectionTitleRow}>
+            <Text style={Typography.heading}>Projects</Text>
+            <View style={styles.countPill}>
+              <Text style={styles.countPillText}>{filteredProjects.length}</Text>
+            </View>
+          </View>
 
           <ScrollView
             horizontal
@@ -155,53 +171,36 @@ const DashboardScreen = () => {
             style={styles.filterBar}
             contentContainerStyle={styles.filterBarContent}
           >
-            {(['all', 'high', 'medium', 'low'] as RiskFilter[]).map((level) => {
-              const isActive = filterRisk === level;
-              const baseColor = getFilterColor(level);
-              return (
-                <TouchableOpacity
-                  key={level}
-                  activeOpacity={0.8}
-                  style={[
-                    styles.filterChip,
-                    { borderColor: baseColor },
-                    isActive && { backgroundColor: baseColor },
-                  ]}
-                  onPress={() => setFilterRisk(level)}
-                >
-                  <Icon
-                    name={FILTER_ICONS[level]}
-                    size={15}
-                    color={isActive ? Colors.white : baseColor}
-                    style={styles.filterChipIcon}
-                  />
-                  <Text
-                    style={[
-                      styles.filterChipText,
-                      { color: isActive ? Colors.white : baseColor },
-                    ]}
-                  >
-                    {level}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+            {(['all', 'high', 'medium', 'low'] as RiskFilter[]).map((level) => (
+              <Chip
+                key={level}
+                label={level === 'all' ? 'All' : capitalize(level)}
+                color={getFilterColor(level)}
+                icon={FILTER_ICONS[level]}
+                size="lg"
+                active={filterRisk === level}
+                onPress={() => setFilterRisk(level)}
+                style={styles.filterChipSpacing}
+              />
+            ))}
           </ScrollView>
         </View>
 
         <View style={styles.grid}>
           {filteredProjects.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <Text style={Typography.caption}>No projects found matching the filter.</Text>
+              <Icon name="folder" size={44} color={Colors.borderStrong} />
+              <Text style={styles.emptyText}>No projects match this filter.</Text>
             </View>
           ) : (
-            filteredProjects.map((project) => (
-              <ProjectCard
-                key={project.id}
-                project={project}
-                onPress={() => handleProjectPress(project.id)}
-                size={cardSize}
-              />
+            filteredProjects.map((project, i) => (
+              <FadeInView key={project.id} delay={i * 45} style={{ width: cardSize }}>
+                <ProjectCard
+                  project={project}
+                  onPress={() => handleProjectPress(project.id)}
+                  size={cardSize}
+                />
+              </FadeInView>
             ))
           )}
         </View>
@@ -228,41 +227,52 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   header: {
-    padding: 24,
-    paddingBottom: 16,
+    paddingHorizontal: Spacing.xxl,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.lg,
+  },
+  eyebrow: {
+    ...Typography.overline,
+    color: Colors.primary,
+    marginBottom: Spacing.xs,
   },
   subheading: {
-    marginTop: 4,
+    marginTop: Spacing.xs,
   },
   sectionHeader: {
-    paddingHorizontal: 24,
-    marginTop: 16,
-    marginBottom: 16,
+    paddingHorizontal: Spacing.xxl,
+    marginTop: Spacing.xs,
+    marginBottom: Spacing.lg,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  countPill: {
+    minWidth: 26,
+    height: 22,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countPillText: {
+    ...Typography.chipText,
+    fontSize: 12,
+    color: Colors.primary,
   },
   filterBar: {
-    marginTop: 12,
+    marginTop: Spacing.md,
+    marginHorizontal: -Spacing.xxl,
   },
   filterBarContent: {
     flexDirection: 'row',
-    paddingRight: 24,
+    paddingHorizontal: Spacing.xxl,
   },
-  filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 22,
-    backgroundColor: Colors.white,
-    borderWidth: 1.5,
-    marginRight: 10,
-  },
-  filterChipIcon: {
-    marginRight: 6,
-  },
-  filterChipText: {
-    ...Typography.caption,
-    fontWeight: '800',
-    textTransform: 'capitalize',
+  filterChipSpacing: {
+    marginRight: Spacing.sm,
   },
   grid: {
     flexDirection: 'row',
@@ -271,9 +281,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   emptyContainer: {
-    flex: 1,
+    width: '100%',
     alignItems: 'center',
-    paddingVertical: 40,
+    paddingVertical: Spacing.huge,
+  },
+  emptyText: {
+    ...Typography.subtitle,
+    fontSize: 15,
+    color: Colors.textLight,
+    marginTop: Spacing.md,
   },
   loadingText: {
     marginTop: 12,

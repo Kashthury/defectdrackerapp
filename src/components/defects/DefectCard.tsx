@@ -1,10 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { Colors } from '../../constants/colors';
 import { Typography } from '../../constants/typography';
+import { Radius, Spacing, Shadows } from '../../constants/theme';
 import { Defect, StatusTransition } from '../../types/defect';
 import Dropdown from '../common/Dropdown';
+import { Chip } from '../common/Chip';
+import { FadeInView } from '../common/FadeInView';
+import { AnimatedPressable } from '../common/AnimatedPressable';
+import { resolveChipColor } from '../../utils/colorUtils';
 import { getNextStatuses } from '../../services/defectService';
 
 interface DefectCardProps {
@@ -12,6 +17,11 @@ interface DefectCardProps {
   isMyDefect: boolean;
   onStatusChange: (defect: Defect, targetStatus: any) => Promise<void>;
   onReassign: (defect: Defect) => void;
+  /** id -> backend color lookups so chips use the real severity/priority hues. */
+  severityColorMap?: Record<string, string>;
+  priorityColorMap?: Record<string, string>;
+  /** List index, used to stagger the entrance animation. */
+  index?: number;
 }
 
 export const DefectCard: React.FC<DefectCardProps> = ({
@@ -19,6 +29,9 @@ export const DefectCard: React.FC<DefectCardProps> = ({
   isMyDefect,
   onStatusChange,
   onReassign,
+  severityColorMap,
+  priorityColorMap,
+  index = 0,
 }) => {
   const [nextStatuses, setNextStatuses] = useState<StatusTransition[]>([]);
   const [loadingStatus, setLoadingStatus] = useState(false);
@@ -27,15 +40,14 @@ export const DefectCard: React.FC<DefectCardProps> = ({
     if (isMyDefect && defect?.statusId) {
       fetchNextStatuses();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defect?.statusId, isMyDefect]);
 
   const fetchNextStatuses = async () => {
     if (!defect?.statusId) return;
     try {
-      console.log(`📡 Fetching next statuses for ${defect.defectNo}, statusId: ${defect.statusId}`);
       const response = await getNextStatuses(defect.statusId);
       const data = response.data?.data || response.data || [];
-      console.log(`✅ Next statuses for ${defect.defectNo}:`, JSON.stringify(data));
       setNextStatuses(Array.isArray(data) ? data : []);
     } catch (error: any) {
       console.warn(`⚠️ Failed to fetch next statuses for ${defect.defectNo}:`, error.message);
@@ -55,182 +67,188 @@ export const DefectCard: React.FC<DefectCardProps> = ({
       }))
   ];
 
- const handleStatusSelect = async (val: string | number) => {
-   if (val === defect.statusId) return;
+  const handleStatusSelect = async (val: string | number) => {
+    if (val === defect.statusId) return;
+    const transition = nextStatuses.find(s => s.toStatus.id === val);
+    if (!transition) return;
+    setLoadingStatus(true);
+    try {
+      await onStatusChange(defect, transition.toStatus);
+    } finally {
+      setLoadingStatus(false);
+    }
+  };
 
-   const transition = nextStatuses.find(
-     s => s.toStatus.id === val
-   );
-
-   if (!transition) return;
-
-   setLoadingStatus(true);
-
-   try {
-     await onStatusChange(defect, transition.toStatus);
-   } finally {
-     setLoadingStatus(false);
-   }
- };
+  const severityColor = resolveChipColor(
+    defect.severityColor ?? severityColorMap?.[String(defect.severityId)],
+    defect.severityName,
+  );
+  const priorityColor = resolveChipColor(
+    defect.priorityColor ?? priorityColorMap?.[String(defect.priorityId)],
+    defect.priorityName,
+  );
+  const statusColor = defect.statusColor || Colors.primary;
 
   return (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.defectNo}>{defect.defectNo}</Text>
-          <Text style={styles.typeText}>{defect.defectTypeName}</Text>
+    <FadeInView delay={(index % 12) * 55} style={styles.wrapper}>
+      <View style={[styles.card, { borderLeftColor: severityColor }]}>
+        <View style={styles.cardHeader}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.defectNo}>{defect.defectNo}</Text>
+            <Text style={styles.typeText}>{defect.defectTypeName}</Text>
+          </View>
+          <View style={styles.headerRight}>
+            {isMyDefect ? (
+              <Dropdown
+                items={statusItems}
+                selectedValue={defect.statusId}
+                onSelect={handleStatusSelect}
+                placeholder="Status"
+                style={styles.statusDropdown}
+                disabled={loadingStatus}
+              />
+            ) : (
+              <Chip
+                label={defect.statusName || 'No Status'}
+                color={statusColor}
+                dot
+                size="md"
+                uppercase
+              />
+            )}
+          </View>
         </View>
-        <View style={styles.headerRight}>
-          {isMyDefect ? (
-            <Dropdown
-              items={statusItems}
-              selectedValue={defect.statusId}
-              onSelect={handleStatusSelect}
-              placeholder="Status"
-              style={styles.statusDropdown}
-              disabled={loadingStatus}
-            />
-          ) : (
-            <View style={[styles.statusBadge, { backgroundColor: (defect.statusColor || Colors.primary) + '15' }]}>
-              <View style={[styles.dot, { backgroundColor: defect.statusColor || Colors.primary }]} />
-              <Text style={[styles.statusText, { color: defect.statusColor || Colors.primary }]}>
-                {defect.statusName || 'No Status'}
-              </Text>
+
+        <Text style={styles.description} numberOfLines={3}>{defect.description}</Text>
+
+        <View style={styles.metaRow}>
+          <Icon name="layers" size={13} color={Colors.textLight} />
+          <Text style={styles.metaText}>{defect.moduleName}</Text>
+          <Icon name="chevron-right" size={12} color={Colors.textLight} style={styles.metaChevron} />
+          <Text style={styles.metaText}>{defect.subModuleName || 'Default'}</Text>
+        </View>
+
+        <View style={styles.chipsRow}>
+          <View style={styles.chipGroup}>
+            <Text style={styles.chipLabel}>Severity</Text>
+            <Chip label={defect.severityName || '—'} color={severityColor} dot size="md" />
+          </View>
+          <View style={styles.chipGroup}>
+            <Text style={styles.chipLabel}>Priority</Text>
+            <Chip label={defect.priorityName || '—'} color={priorityColor} dot size="md" />
+          </View>
+        </View>
+
+        <View style={styles.grid}>
+          <View style={styles.gridItem}>
+            <Text style={styles.gridLabel}>Entered By</Text>
+            <Text style={styles.gridValueText} numberOfLines={1}>{defect.createdByName}</Text>
+          </View>
+          {!isMyDefect && (
+            <View style={styles.gridItem}>
+              <Text style={styles.gridLabel}>Assigned To</Text>
+              <Text style={styles.gridValueText} numberOfLines={1}>{defect.assignedToName}</Text>
             </View>
           )}
         </View>
-      </View>
 
-      <Text style={styles.description} numberOfLines={3}>{defect.description}</Text>
-
-      <View style={styles.metaRow}>
-         <Icon name="layers" size={14} color={Colors.textLight} />
-         <Text style={styles.metaText}>{defect.moduleName}</Text>
-         <Icon name="chevron-right" size={12} color={Colors.textLight} style={{ marginHorizontal: 2 }} />
-         <Text style={styles.metaText}>{defect.subModuleName || 'Default'}</Text>
-      </View>
-
-      <View style={styles.grid}>
-        <View style={styles.gridItem}>
-          <Text style={styles.gridLabel}>Severity</Text>
-          <View style={[styles.miniBadge, { backgroundColor: Colors.error + '10' }]}>
-            <Text style={[styles.gridValue, { color: Colors.error }]}>{defect.severityName}</Text>
+        <View style={styles.footer}>
+          <View style={styles.releaseContainer}>
+            <Icon name="package" size={14} color={Colors.textSecondary} />
+            <Text style={styles.releaseText} numberOfLines={1}>{defect.releaseName}</Text>
           </View>
+          <AnimatedPressable style={styles.reassignBtn} onPress={() => onReassign(defect)}>
+            <Icon name="user-plus" size={15} color={Colors.primary} />
+            <Text style={styles.reassignText}>Reassign</Text>
+          </AnimatedPressable>
         </View>
-        <View style={styles.gridItem}>
-          <Text style={styles.gridLabel}>Priority</Text>
-          <View style={[styles.miniBadge, { backgroundColor: Colors.warning + '10' }]}>
-            <Text style={[styles.gridValue, { color: Colors.warning }]}>{defect.priorityName}</Text>
-          </View>
-        </View>
-        <View style={styles.gridItem}>
-          <Text style={styles.gridLabel}>Entered By</Text>
-          <Text style={styles.gridValueText}>{defect.createdByName}</Text>
-        </View>
-        {!isMyDefect && (
-          <View style={styles.gridItem}>
-            <Text style={styles.gridLabel}>Assigned To</Text>
-            <Text style={styles.gridValueText}>{defect.assignedToName}</Text>
-          </View>
-        )}
       </View>
-
-      <View style={styles.footer}>
-        <View style={styles.releaseContainer}>
-          <Icon name="package" size={14} color={Colors.textSecondary} />
-          <Text style={styles.releaseText}>{defect.releaseName}</Text>
-        </View>
-        <TouchableOpacity style={styles.reassignBtn} onPress={() => onReassign(defect)}>
-          <Icon name="user-plus" size={16} color={Colors.primary} />
-          <Text style={styles.reassignText}>Reassign</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+    </FadeInView>
   );
 };
 
 const styles = StyleSheet.create({
+  wrapper: {
+    marginBottom: Spacing.lg,
+  },
   card: {
-    backgroundColor: Colors.white,
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 16,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.xl,
+    padding: Spacing.lg,
     borderWidth: 1,
     borderColor: Colors.border,
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 3,
+    borderLeftWidth: 4,
+    ...Shadows.card,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+    alignItems: 'flex-start',
+    marginBottom: Spacing.md,
   },
   headerLeft: {
     flex: 1,
+    paddingRight: Spacing.sm,
   },
   headerRight: {
-    marginLeft: 12,
+    marginLeft: Spacing.sm,
   },
   defectNo: {
-    ...Typography.heading,
+    ...Typography.cardTitle,
     fontSize: 18,
     color: Colors.primary,
   },
   typeText: {
     ...Typography.overline,
     fontSize: 10,
-    marginTop: 2,
+    marginTop: 3,
   },
   statusDropdown: {
-    minWidth: 120,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 6,
-  },
-  statusText: {
-    ...Typography.label,
-    fontSize: 11,
-    textTransform: 'uppercase',
+    minWidth: 128,
   },
   description: {
     ...Typography.body,
+    fontSize: 15,
+    lineHeight: 22,
     color: Colors.text,
-    marginBottom: 12,
+    marginBottom: Spacing.md,
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: Spacing.lg,
     backgroundColor: Colors.background,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 5,
+    borderRadius: Radius.sm,
     alignSelf: 'flex-start',
+    gap: 3,
   },
   metaText: {
     ...Typography.caption,
-    marginLeft: 4,
     color: Colors.textSecondary,
+  },
+  metaChevron: {
+    marginHorizontal: 1,
+  },
+  chipsRow: {
+    flexDirection: 'row',
+    gap: Spacing.xxl,
+    marginBottom: Spacing.lg,
+  },
+  chipGroup: {
+    gap: Spacing.xs,
+  },
+  chipLabel: {
+    ...Typography.overline,
+    fontSize: 9,
+    color: Colors.textLight,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 16,
+    gap: Spacing.md,
+    marginBottom: Spacing.lg,
   },
   gridItem: {
     flex: 1,
@@ -240,22 +258,12 @@ const styles = StyleSheet.create({
     ...Typography.overline,
     fontSize: 9,
     color: Colors.textLight,
-    marginBottom: 4,
-  },
-  gridValue: {
-    ...Typography.label,
-    fontSize: 12,
+    marginBottom: Spacing.xs,
   },
   gridValueText: {
     ...Typography.bodyBold,
     fontSize: 13,
     color: Colors.text,
-  },
-  miniBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
   },
   footer: {
     flexDirection: 'row',
@@ -263,12 +271,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderTopWidth: 1,
     borderTopColor: Colors.border,
-    paddingTop: 12,
+    paddingTop: Spacing.md,
   },
   releaseContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: Spacing.xs,
+    flex: 1,
   },
   releaseText: {
     ...Typography.caption,
@@ -277,15 +286,16 @@ const styles = StyleSheet.create({
   reassignBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
+    gap: Spacing.xs,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.pill,
     backgroundColor: Colors.primarySoft,
   },
   reassignText: {
     ...Typography.label,
     fontSize: 12,
+    textTransform: 'none',
     color: Colors.primary,
   },
 });

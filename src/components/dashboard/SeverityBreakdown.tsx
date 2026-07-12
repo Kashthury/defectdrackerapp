@@ -4,12 +4,17 @@ import {
   Text,
   ScrollView,
   StyleSheet,
-  TouchableOpacity,
   Dimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { PieChart } from 'react-native-chart-kit';
 import { Modal } from '../common/Modal';
+import { Chip } from '../common/Chip';
+import { AnimatedPressable } from '../common/AnimatedPressable';
+import { Colors } from '../../constants/colors';
+import { Typography } from '../../constants/typography';
+import { Radius, Spacing, Shadows } from '../../constants/theme';
+import { resolveChipColor, withAlpha } from '../../utils/colorUtils';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -18,14 +23,12 @@ interface SeverityBreakdownProps {
 }
 
 const SeverityBreakdown: React.FC<SeverityBreakdownProps> = ({ data }) => {
-  // All hooks at the top – unconditional
   const scrollRef = useRef<ScrollView>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedSeverity, setSelectedSeverity] = useState<any>(null);
   const [cardWidth, setCardWidth] = useState(280);
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  // Early returns after hooks (safe)
   if (!data || !data.data) {
     return (
       <View style={styles.container}>
@@ -44,12 +47,10 @@ const SeverityBreakdown: React.FC<SeverityBreakdownProps> = ({ data }) => {
     );
   }
 
-  // Sort by severityId descending (higher weight first)
   const sortedSeverities = [...severities].sort((a, b) => b.severityId - a.severityId);
 
-  // --- Scroll helpers ---
   const scrollToIndex = (index: number) => {
-    const offset = index * (cardWidth + 16);
+    const offset = index * (cardWidth + Spacing.lg);
     scrollRef.current?.scrollTo({ x: offset, animated: true });
     setCurrentIndex(index);
   };
@@ -69,7 +70,6 @@ const SeverityBreakdown: React.FC<SeverityBreakdownProps> = ({ data }) => {
     if (width > 0) setCardWidth(width);
   };
 
-  // --- Chart modal ---
   const openChartModal = (severity: any) => {
     setSelectedSeverity(severity);
     setModalVisible(true);
@@ -77,39 +77,36 @@ const SeverityBreakdown: React.FC<SeverityBreakdownProps> = ({ data }) => {
 
   const getChartData = (severity: any) => {
     const statusCounts = severity.statusCounts || {};
-    const entries = Object.entries(statusCounts);
-    const filtered = entries.filter(([_, count]) => count > 0);
+    const entries = Object.entries(statusCounts) as [string, number][];
+    const filtered = entries.filter(([, count]) => count > 0);
     if (filtered.length === 0) {
       return [{ name: 'No Data', count: 0, color: '#e2e8f0' }];
     }
     const colors = ['#3b82f6', '#f59e0b', '#ef4444', '#22c55e', '#8b5cf6', '#ec4899'];
     return filtered.map(([status, count], idx) => ({
       name: status,
-      count: count as number,
+      count,
       color: colors[idx % colors.length],
     }));
   };
 
   return (
     <View style={styles.container}>
-      {/* Header with totals */}
       <View style={styles.header}>
-        <Text style={styles.title}>Defect Severity Breakdown</Text>
+        <View style={styles.titleRow}>
+          <Icon name="layers" size={16} color={Colors.textSecondary} />
+          <Text style={styles.title}>Defect Severity Breakdown</Text>
+        </View>
         <View style={styles.totalBadges}>
-          <View style={[styles.badge, styles.remarkBadge]}>
-            <Text style={styles.badgeText}>Total Remark: {totalRemark || 0}</Text>
-          </View>
-          <View style={[styles.badge, styles.defectBadge]}>
-            <Text style={styles.badgeText}>Total Defect: {totalDefects || 0}</Text>
-          </View>
+          <Chip label={`Remarks: ${totalRemark || 0}`} color={Colors.info} size="md" icon="message-square" />
+          <Chip label={`Defects: ${totalDefects || 0}`} color={Colors.error} size="md" icon="alert-circle" />
         </View>
       </View>
 
-      {/* Scrollable cards */}
       <View style={styles.scrollWrapper}>
-        <TouchableOpacity onPress={scrollLeft} style={styles.scrollButton}>
-          <Icon name="chevron-left" size={24} color="#4a5568" />
-        </TouchableOpacity>
+        <AnimatedPressable onPress={scrollLeft} style={styles.scrollButton}>
+          <Icon name="chevron-left" size={22} color={Colors.textSecondary} />
+        </AnimatedPressable>
 
         <ScrollView
           ref={scrollRef}
@@ -119,20 +116,19 @@ const SeverityBreakdown: React.FC<SeverityBreakdownProps> = ({ data }) => {
           contentContainerStyle={styles.scrollContent}
           onMomentumScrollEnd={(e) => {
             const offsetX = e.nativeEvent.contentOffset.x;
-            const index = Math.round(offsetX / (cardWidth + 16));
+            const index = Math.round(offsetX / (cardWidth + Spacing.lg));
             setCurrentIndex(Math.min(index, sortedSeverities.length - 1));
           }}
         >
           {sortedSeverities.map((severity) => {
             const statusCounts = severity.statusCounts || {};
             const totalForSeverity = severity.totalDefects || 0;
-            const color = severity.severityColor || '#6B7280';
+            const color = resolveChipColor(severity.severityColor, severity.severityName);
             const displayName = severity.severityName || 'Unknown';
-            const statusEntries = Object.entries(statusCounts).sort((a, b) =>
-              a[0].localeCompare(b[0])
+            const statusEntries = (Object.entries(statusCounts) as [string, number][]).sort((a, b) =>
+              a[0].localeCompare(b[0]),
             );
 
-            // Split into two columns
             const half = Math.ceil(statusEntries.length / 2);
             const firstHalf = statusEntries.slice(0, half);
             const secondHalf = statusEntries.slice(half);
@@ -143,22 +139,17 @@ const SeverityBreakdown: React.FC<SeverityBreakdownProps> = ({ data }) => {
                 style={[styles.card, { borderLeftColor: color }]}
                 onLayout={onCardLayout}
               >
-                <Text style={[styles.severityLabel, { color }]}>
-                  Defects on {displayName}
-                </Text>
-                <View style={styles.totalDefectBadge}>
-                  <Text style={styles.totalDefectText}>
-                    Total Defect: {totalForSeverity}
-                  </Text>
+                <Text style={[styles.severityLabel, { color }]}>Defects on {displayName}</Text>
+                <View style={styles.severityTotal}>
+                  <Chip label={`Total: ${totalForSeverity}`} color={color} size="sm" dot />
                 </View>
 
-                {/* Two‑column grid */}
                 <View style={styles.statusGrid}>
                   <View style={styles.statusColumn}>
                     {firstHalf.map(([status, count]) => (
                       <View key={status} style={styles.statusRow}>
                         <View style={[styles.statusDot, { backgroundColor: color }]} />
-                        <Text style={styles.statusName}>{status}</Text>
+                        <Text style={styles.statusName} numberOfLines={1}>{status}</Text>
                         <Text style={styles.statusCount}>{count}</Text>
                       </View>
                     ))}
@@ -167,30 +158,30 @@ const SeverityBreakdown: React.FC<SeverityBreakdownProps> = ({ data }) => {
                     {secondHalf.map(([status, count]) => (
                       <View key={status} style={styles.statusRow}>
                         <View style={[styles.statusDot, { backgroundColor: color }]} />
-                        <Text style={styles.statusName}>{status}</Text>
+                        <Text style={styles.statusName} numberOfLines={1}>{status}</Text>
                         <Text style={styles.statusCount}>{count}</Text>
                       </View>
                     ))}
                   </View>
                 </View>
 
-                <TouchableOpacity
-                  style={styles.viewChartButton}
+                <AnimatedPressable
+                  style={[styles.viewChartButton, { backgroundColor: withAlpha(color, 0.12) }]}
                   onPress={() => openChartModal(severity)}
                 >
-                  <Text style={styles.viewChartText}>View Chart</Text>
-                </TouchableOpacity>
+                  <Icon name="pie-chart" size={13} color={color} />
+                  <Text style={[styles.viewChartText, { color }]}>View Chart</Text>
+                </AnimatedPressable>
               </View>
             );
           })}
         </ScrollView>
 
-        <TouchableOpacity onPress={scrollRight} style={styles.scrollButton}>
-          <Icon name="chevron-right" size={24} color="#4a5568" />
-        </TouchableOpacity>
+        <AnimatedPressable onPress={scrollRight} style={styles.scrollButton}>
+          <Icon name="chevron-right" size={22} color={Colors.textSecondary} />
+        </AnimatedPressable>
       </View>
 
-      {/* Modal with Pie Chart */}
       <Modal
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
@@ -198,9 +189,7 @@ const SeverityBreakdown: React.FC<SeverityBreakdownProps> = ({ data }) => {
       >
         {selectedSeverity && (
           <View style={styles.modalContent}>
-            <Text style={styles.modalTotal}>
-              Total Defect: {selectedSeverity.totalDefects || 0}
-            </Text>
+            <Text style={styles.modalTotal}>Total Defect: {selectedSeverity.totalDefects || 0}</Text>
             <PieChart
               data={getChartData(selectedSeverity)}
               width={screenWidth - 80}
@@ -222,80 +211,60 @@ const SeverityBreakdown: React.FC<SeverityBreakdownProps> = ({ data }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { marginVertical: 16 },
-  header: { marginBottom: 12 },
-  title: { fontSize: 18, fontWeight: '600', color: '#1e293b', marginBottom: 6 },
-  totalBadges: { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
-  badge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
+  container: { marginVertical: Spacing.lg },
+  header: { marginBottom: Spacing.md },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
   },
-  remarkBadge: {
-    backgroundColor: '#eff6ff',
-    borderColor: '#3b82f6',
-  },
-  defectBadge: {
-    backgroundColor: '#fef2f2',
-    borderColor: '#ef4444',
-  },
-  badgeText: { fontSize: 14, fontWeight: '600' },
+  title: { ...Typography.sectionTitle },
+  totalBadges: { flexDirection: 'row', gap: Spacing.sm, flexWrap: 'wrap' },
 
   scrollWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   scrollButton: {
-    padding: 4,
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-    marginHorizontal: 4,
+    padding: Spacing.xs,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginHorizontal: Spacing.xs,
+    ...Shadows.soft,
   },
   scrollView: { flex: 1 },
-  scrollContent: { paddingVertical: 4, paddingHorizontal: 2 },
+  scrollContent: { paddingVertical: Spacing.xs, paddingHorizontal: 2 },
 
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginRight: 16,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    marginRight: Spacing.lg,
     minWidth: 280,
     maxWidth: 360,
-    borderLeftWidth: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  severityLabel: { fontSize: 16, fontWeight: '700', marginBottom: 4 },
-  totalDefectBadge: {
-    backgroundColor: '#fef2f2',
-    borderColor: '#ef4444',
     borderWidth: 1,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    alignSelf: 'flex-start',
-    marginBottom: 8,
+    borderColor: Colors.border,
+    borderLeftWidth: 6,
+    ...Shadows.card,
   },
-  totalDefectText: { fontSize: 12, fontWeight: '600', color: '#b91c1c' },
+  severityLabel: { ...Typography.cardTitle, fontSize: 16, marginBottom: Spacing.sm },
+  severityTotal: {
+    alignSelf: 'flex-start',
+    marginBottom: Spacing.sm,
+  },
 
   statusGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginVertical: 6,
+    marginVertical: Spacing.xs,
   },
   statusColumn: {
     flex: 1,
     paddingRight: 7,
-    marginHorizontal: 8,
+    marginHorizontal: Spacing.sm,
   },
   statusRow: {
     flexDirection: 'row',
@@ -306,37 +275,37 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    marginRight: 8,
+    marginRight: Spacing.sm,
   },
   statusName: {
-    fontSize: 13,
-    color: '#1e293b',
+    ...Typography.caption,
+    color: Colors.textSecondary,
     flex: 1,
   },
   statusCount: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1e293b',
+    ...Typography.caption,
+    fontWeight: '700',
+    color: Colors.text,
     minWidth: 24,
     textAlign: 'right',
   },
 
   viewChartButton: {
-    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginTop: Spacing.md,
     alignSelf: 'flex-start',
-    backgroundColor: '#eff6ff',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#93c5fd',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs + 1,
+    borderRadius: Radius.pill,
   },
-  viewChartText: { color: '#2563eb', fontSize: 12, fontWeight: '500' },
+  viewChartText: { ...Typography.chipText, fontSize: 12 },
 
-  noData: { fontSize: 14, color: '#94a3b8', textAlign: 'center', paddingVertical: 20 },
+  noData: { ...Typography.subtitle, fontSize: 14, color: Colors.textLight, textAlign: 'center', paddingVertical: Spacing.xl },
 
-  modalContent: { alignItems: 'center', paddingVertical: 12 },
-  modalTotal: { fontSize: 16, fontWeight: '600', color: '#1e293b', marginBottom: 12 },
+  modalContent: { alignItems: 'center', paddingVertical: Spacing.md },
+  modalTotal: { ...Typography.cardTitle, marginBottom: Spacing.md },
 });
 
 export default SeverityBreakdown;

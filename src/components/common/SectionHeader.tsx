@@ -1,5 +1,8 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { Colors } from '../../constants/colors';
+import { Typography } from '../../constants/typography';
+import { Spacing } from '../../constants/theme';
 
 interface SectionHeaderProps {
   title: string;
@@ -14,7 +17,7 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({ title, subtitle })
 );
 
 const styles = StyleSheet.create({
-  container: { marginBottom: 16 },
-  title: { fontSize: 20, fontWeight: '700', color: '#0f172a' },
-  subtitle: { fontSize: 14, color: '#64748b', marginTop: 2 },
+  container: { marginBottom: Spacing.lg },
+  title: { ...Typography.sectionTitle },
+  subtitle: { ...Typography.caption, color: Colors.textSecondary, marginTop: 2 },
 });

@@ -1,185 +1,199 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { Colors } from '../../constants/colors';
 import { Typography } from '../../constants/typography';
+import { Radius, Spacing, Shadows } from '../../constants/theme';
 import { TestCase } from '../../types/testCase';
+import { Chip } from '../common/Chip';
+import { FadeInView } from '../common/FadeInView';
+import { AnimatedPressable } from '../common/AnimatedPressable';
+import { resolveChipColor } from '../../utils/colorUtils';
 
 interface TestCaseCardProps {
   testCase: TestCase;
   isMyTestCase: boolean;
   onReassign: (testCase: TestCase) => void;
+  severityColorMap?: Record<string, string>;
+  priorityColorMap?: Record<string, string>;
+  index?: number;
 }
 
 export const TestCaseCard: React.FC<TestCaseCardProps> = ({
   testCase,
   isMyTestCase,
   onReassign,
+  severityColorMap,
+  priorityColorMap,
+  index = 0,
 }) => {
   if (!testCase) return null;
 
+  const severityColor = resolveChipColor(
+    testCase.severityColor ?? severityColorMap?.[String(testCase.severityId)],
+    testCase.severityName,
+  );
+  const priorityColor = resolveChipColor(
+    testCase.priorityColor ?? priorityColorMap?.[String(testCase.priorityId)],
+    testCase.priorityName,
+  );
+
   return (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.testCaseNo}>{testCase.testCaseNo}</Text>
-          <Text style={styles.typeText}>{testCase.testCaseTypeName}</Text>
+    <FadeInView delay={(index % 12) * 55} style={styles.wrapper}>
+      <View style={[styles.card, { borderLeftColor: severityColor }]}>
+        <View style={styles.cardHeader}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.testCaseNo}>{testCase.testCaseNo}</Text>
+            <Text style={styles.typeText}>{testCase.testCaseTypeName}</Text>
+          </View>
+          <View style={styles.headerRight}>
+            {testCase.executionStatusName ? (
+              <Chip
+                label={testCase.executionStatusName}
+                color={testCase.executionStatusColor || Colors.primary}
+                dot
+                size="md"
+                uppercase
+              />
+            ) : null}
+          </View>
         </View>
-        <View style={styles.headerRight}>
-          {testCase.executionStatusName && (
-            <View
-              style={[
-                styles.statusBadge,
-                { backgroundColor: (testCase.executionStatusColor || Colors.primary) + '15' },
-              ]}
-            >
-              <View style={[styles.dot, { backgroundColor: testCase.executionStatusColor || Colors.primary }]} />
-              <Text
-                style={[
-                  styles.statusText,
-                  { color: testCase.executionStatusColor || Colors.primary },
-                ]}
-              >
-                {testCase.executionStatusName}
+
+        <Text style={styles.description} numberOfLines={3}>{testCase.description}</Text>
+
+        <View style={styles.metaRow}>
+          <Icon name="layers" size={13} color={Colors.textLight} />
+          <Text style={styles.metaText}>{testCase.moduleName}</Text>
+          {testCase.subModuleName ? (
+            <>
+              <Icon name="chevron-right" size={12} color={Colors.textLight} style={styles.metaChevron} />
+              <Text style={styles.metaText}>{testCase.subModuleName}</Text>
+            </>
+          ) : null}
+        </View>
+
+        <View style={styles.chipsRow}>
+          <View style={styles.chipGroup}>
+            <Text style={styles.chipLabel}>Severity</Text>
+            <Chip label={testCase.severityName || '—'} color={severityColor} dot size="md" />
+          </View>
+          <View style={styles.chipGroup}>
+            <Text style={styles.chipLabel}>Priority</Text>
+            <Chip label={testCase.priorityName || '—'} color={priorityColor} dot size="md" />
+          </View>
+        </View>
+
+        <View style={styles.grid}>
+          {testCase.defectNo ? (
+            <View style={styles.gridItem}>
+              <Text style={styles.gridLabel}>Linked Defect</Text>
+              <Text style={[styles.gridValueText, { color: Colors.error }]} numberOfLines={1}>
+                {testCase.defectNo}
               </Text>
+            </View>
+          ) : null}
+          {!isMyTestCase && (
+            <View style={styles.gridItem}>
+              <Text style={styles.gridLabel}>Assigned To</Text>
+              <Text style={styles.gridValueText} numberOfLines={1}>{testCase.assignedToName}</Text>
             </View>
           )}
         </View>
-      </View>
 
-      <Text style={styles.description} numberOfLines={3}>{testCase.description}</Text>
-
-      <View style={styles.metaRow}>
-         <Icon name="layers" size={14} color={Colors.textLight} />
-         <Text style={styles.metaText}>{testCase.moduleName}</Text>
-         {testCase.subModuleName ? (
-           <>
-             <Icon name="chevron-right" size={12} color={Colors.textLight} style={{ marginHorizontal: 2 }} />
-             <Text style={styles.metaText}>{testCase.subModuleName}</Text>
-           </>
-         ) : null}
-      </View>
-
-      <View style={styles.grid}>
-        <View style={styles.gridItem}>
-          <Text style={styles.gridLabel}>Severity</Text>
-          <View style={[styles.miniBadge, { backgroundColor: Colors.error + '10' }]}>
-            <Text style={[styles.gridValue, { color: Colors.error }]}>{testCase.severityName}</Text>
+        <View style={styles.footer}>
+          <View style={styles.releaseContainer}>
+            <Icon name="package" size={14} color={Colors.textSecondary} />
+            <Text style={styles.releaseText} numberOfLines={1}>{testCase.releaseName}</Text>
           </View>
+          <AnimatedPressable style={styles.reassignBtn} onPress={() => onReassign(testCase)}>
+            <Icon name="user-plus" size={15} color={Colors.primary} />
+            <Text style={styles.reassignText}>Reassign</Text>
+          </AnimatedPressable>
         </View>
-        <View style={styles.gridItem}>
-          <Text style={styles.gridLabel}>Priority</Text>
-          <View style={[styles.miniBadge, { backgroundColor: Colors.warning + '10' }]}>
-            <Text style={[styles.gridValue, { color: Colors.warning }]}>{testCase.priorityName}</Text>
-          </View>
-        </View>
-        {testCase.defectNo ? (
-          <View style={styles.gridItem}>
-            <Text style={styles.gridLabel}>Linked Defect</Text>
-            <Text style={[styles.gridValueText, { color: Colors.error }]}>{testCase.defectNo}</Text>
-          </View>
-        ) : null}
-        {!isMyTestCase && (
-          <View style={styles.gridItem}>
-            <Text style={styles.gridLabel}>Assigned To</Text>
-            <Text style={styles.gridValueText}>{testCase.assignedToName}</Text>
-          </View>
-        )}
       </View>
-
-      <View style={styles.footer}>
-        <View style={styles.releaseContainer}>
-          <Icon name="package" size={14} color={Colors.textSecondary} />
-          <Text style={styles.releaseText}>{testCase.releaseName}</Text>
-        </View>
-        <TouchableOpacity style={styles.reassignBtn} onPress={() => onReassign(testCase)}>
-          <Icon name="user-plus" size={16} color={Colors.primary} />
-          <Text style={styles.reassignText}>Reassign</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+    </FadeInView>
   );
 };
 
 const styles = StyleSheet.create({
+  wrapper: {
+    marginBottom: Spacing.lg,
+  },
   card: {
-    backgroundColor: Colors.white,
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 16,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.xl,
+    padding: Spacing.lg,
     borderWidth: 1,
     borderColor: Colors.border,
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 3,
+    borderLeftWidth: 4,
+    ...Shadows.card,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+    alignItems: 'flex-start',
+    marginBottom: Spacing.md,
   },
   headerLeft: {
     flex: 1,
+    paddingRight: Spacing.sm,
   },
   headerRight: {
-    marginLeft: 12,
+    marginLeft: Spacing.sm,
   },
   testCaseNo: {
-    ...Typography.heading,
+    ...Typography.cardTitle,
     fontSize: 18,
     color: Colors.primary,
   },
   typeText: {
     ...Typography.overline,
     fontSize: 10,
-    marginTop: 2,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 6,
-  },
-  statusText: {
-    ...Typography.label,
-    fontSize: 11,
-    textTransform: 'uppercase',
+    marginTop: 3,
   },
   description: {
     ...Typography.body,
+    fontSize: 15,
+    lineHeight: 22,
     color: Colors.text,
-    marginBottom: 12,
+    marginBottom: Spacing.md,
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: Spacing.lg,
     backgroundColor: Colors.background,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 5,
+    borderRadius: Radius.sm,
     alignSelf: 'flex-start',
+    gap: 3,
   },
   metaText: {
     ...Typography.caption,
-    marginLeft: 4,
     color: Colors.textSecondary,
+  },
+  metaChevron: {
+    marginHorizontal: 1,
+  },
+  chipsRow: {
+    flexDirection: 'row',
+    gap: Spacing.xxl,
+    marginBottom: Spacing.lg,
+  },
+  chipGroup: {
+    gap: Spacing.xs,
+  },
+  chipLabel: {
+    ...Typography.overline,
+    fontSize: 9,
+    color: Colors.textLight,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 16,
+    gap: Spacing.md,
+    marginBottom: Spacing.lg,
   },
   gridItem: {
     flex: 1,
@@ -189,22 +203,12 @@ const styles = StyleSheet.create({
     ...Typography.overline,
     fontSize: 9,
     color: Colors.textLight,
-    marginBottom: 4,
-  },
-  gridValue: {
-    ...Typography.label,
-    fontSize: 12,
+    marginBottom: Spacing.xs,
   },
   gridValueText: {
     ...Typography.bodyBold,
     fontSize: 13,
     color: Colors.text,
-  },
-  miniBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
   },
   footer: {
     flexDirection: 'row',
@@ -212,12 +216,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderTopWidth: 1,
     borderTopColor: Colors.border,
-    paddingTop: 12,
+    paddingTop: Spacing.md,
   },
   releaseContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: Spacing.xs,
+    flex: 1,
   },
   releaseText: {
     ...Typography.caption,
@@ -226,15 +231,16 @@ const styles = StyleSheet.create({
   reassignBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
+    gap: Spacing.xs,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.pill,
     backgroundColor: Colors.primarySoft,
   },
   reassignText: {
     ...Typography.label,
     fontSize: 12,
+    textTransform: 'none',
     color: Colors.primary,
   },
 });

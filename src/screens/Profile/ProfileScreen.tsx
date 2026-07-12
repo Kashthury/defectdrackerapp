@@ -1,10 +1,15 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { Colors } from '../../constants/colors';
 import { Typography } from '../../constants/typography';
+import { Radius, Spacing, Shadows, coloredShadow } from '../../constants/theme';
+import { withAlpha } from '../../utils/colorUtils';
 import { useAuth } from '../../hooks/useAuth';
 import Icon from 'react-native-vector-icons/Feather';
 import { Modal } from '../../components/common/Modal';
+import { Chip } from '../../components/common/Chip';
+import { FadeInView } from '../../components/common/FadeInView';
+import { AnimatedPressable } from '../../components/common/AnimatedPressable';
 import { ChangePasswordModal } from '../../components/auth/ChangePasswordModal';
 
 const ProfileScreen = () => {
@@ -17,38 +22,61 @@ const ProfileScreen = () => {
     await signOut();
   };
 
-  return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.avatarContainer}>
-          <Icon name="user" size={60} color={Colors.primary} />
-        </View>
-        <Text style={[Typography.title, styles.name]}>{user?.name || 'User Name'}</Text>
-        <Text style={Typography.subtitle}>{user?.email || 'user@example.com'}</Text>
-      </View>
+  const initials = (user?.name || 'U')
+    .split(' ')
+    .map((n: string) => n[0])
+    .filter(Boolean)
+    .join('')
+    .toUpperCase()
+    .substring(0, 2);
 
-      <View style={styles.section}>
-        <TouchableOpacity
+  return (
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <FadeInView style={styles.header}>
+        <View style={styles.avatarContainer}>
+          <Text style={styles.avatarText}>{initials}</Text>
+        </View>
+        <Text style={[Typography.title, styles.name]} numberOfLines={1}>
+          {user?.name || 'User Name'}
+        </Text>
+        <Text style={Typography.subtitle} numberOfLines={1}>
+          {user?.email || 'user@example.com'}
+        </Text>
+        {user?.role ? (
+          <View style={styles.roleChip}>
+            <Chip label={String(user.role)} color={Colors.primary} icon="shield" size="sm" />
+          </View>
+        ) : null}
+      </FadeInView>
+
+      <FadeInView delay={80} style={styles.section}>
+        <Text style={styles.sectionLabel}>Account</Text>
+
+        <AnimatedPressable
           style={styles.menuItem}
           onPress={() => setShowChangePassword(true)}
           accessibilityRole="button"
           accessibilityLabel="Change password"
         >
-          <Icon name="lock" size={20} color={Colors.textSecondary} />
+          <View style={[styles.menuIcon, { backgroundColor: withAlpha(Colors.primary, 0.12) }]}>
+            <Icon name="lock" size={18} color={Colors.primary} />
+          </View>
           <Text style={styles.menuText}>Change Password</Text>
           <Icon name="chevron-right" size={20} color={Colors.textLight} />
-        </TouchableOpacity>
+        </AnimatedPressable>
 
-        <TouchableOpacity
+        <AnimatedPressable
           style={[styles.menuItem, styles.logoutItem]}
           onPress={() => setShowLogoutModal(true)}
           accessibilityRole="button"
           accessibilityLabel="Log out"
         >
-          <Icon name="log-out" size={20} color={Colors.error} />
+          <View style={[styles.menuIcon, { backgroundColor: withAlpha(Colors.error, 0.12) }]}>
+            <Icon name="log-out" size={18} color={Colors.error} />
+          </View>
           <Text style={[styles.menuText, { color: Colors.error }]}>Logout</Text>
-        </TouchableOpacity>
-      </View>
+        </AnimatedPressable>
+      </FadeInView>
 
       <Modal
         visible={showLogoutModal}
@@ -73,60 +101,76 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
+  content: {
+    paddingBottom: Spacing.huge,
+  },
   header: {
     alignItems: 'center',
-    paddingVertical: 40,
-    backgroundColor: Colors.white,
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
-    elevation: 4,
-    shadowColor: Colors.primaryDark,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
+    paddingVertical: Spacing.huge,
+    paddingHorizontal: Spacing.xl,
+    backgroundColor: Colors.card,
+    borderBottomLeftRadius: Radius.xxl,
+    borderBottomRightRadius: Radius.xxl,
+    ...Shadows.card,
   },
   name: {
-    marginTop: 8,
+    marginTop: Spacing.md,
   },
   avatarContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: Colors.background,
+    width: 96,
+    height: 96,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
-    borderWidth: 2,
-    borderColor: Colors.primary,
+    marginBottom: Spacing.sm,
+    ...coloredShadow(Colors.primary, 0.35, 16, 8),
+  },
+  avatarText: {
+    ...Typography.title,
+    fontSize: 34,
+    color: Colors.white,
+  },
+  roleChip: {
+    marginTop: Spacing.md,
   },
   section: {
-    marginTop: 24,
-    paddingHorizontal: 16,
+    marginTop: Spacing.xxl,
+    paddingHorizontal: Spacing.lg,
+  },
+  sectionLabel: {
+    ...Typography.overline,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.md,
+    marginLeft: Spacing.xs,
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.white,
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 12,
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 1 },
+    backgroundColor: Colors.card,
+    padding: Spacing.lg,
+    borderRadius: Radius.lg,
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    ...Shadows.soft,
+  },
+  menuIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: Radius.md,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   menuText: {
     flex: 1,
-    marginLeft: 16,
-    fontSize: 16,
-    color: Colors.text,
-    fontWeight: '500',
+    marginLeft: Spacing.md,
+    ...Typography.bodyBold,
+    fontSize: 15,
   },
   logoutItem: {
-    marginTop: 20,
-    borderWidth: 1,
-    borderColor: Colors.error + '20',
+    marginTop: Spacing.sm,
+    borderColor: withAlpha(Colors.error, 0.25),
   },
 });
 

@@ -4,8 +4,10 @@ export interface TestCase {
   description: string;
   severityId: number;
   severityName: string;
+  severityColor?: string;
   priorityId: number;
   priorityName: string;
+  priorityColor?: string;
   testCaseTypeId: number;
   testCaseTypeName: string;
   moduleId: number;

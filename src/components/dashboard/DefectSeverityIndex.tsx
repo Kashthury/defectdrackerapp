@@ -1,6 +1,11 @@
 import React from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import Icon from 'react-native-vector-icons/Feather';
 import { Colors } from '../../constants/colors';
+import { Typography } from '../../constants/typography';
+import { Radius, Spacing, Shadows } from '../../constants/theme';
+import { Chip } from '../common/Chip';
+import { withAlpha } from '../../utils/colorUtils';
 
 interface DefectSeverityIndexProps {
   dsi: number;
@@ -9,126 +14,110 @@ interface DefectSeverityIndexProps {
   error?: string | null;
 }
 
+// Maps the backend status label to a color from the shared palette.
+const getStatusColor = (status: string): string => {
+  switch (status) {
+    case 'Critical':
+      return '#B91C1C';
+    case 'High Risk':
+      return Colors.error;
+    case 'Needs Attention':
+      return Colors.warning;
+    default: // Healthy
+      return Colors.success;
+  }
+};
+
+const CardShell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <View style={styles.card}>
+    <View style={styles.titleRow}>
+      <Icon name="bar-chart-2" size={16} color={Colors.textSecondary} />
+      <Text style={styles.title}>Defect Severity Index</Text>
+    </View>
+    {children}
+  </View>
+);
+
 export const DefectSeverityIndex: React.FC<DefectSeverityIndexProps> = ({
   dsi,
   status = 'Healthy',
   loading = false,
   error = null,
 }) => {
-  // Determine colors based on status
-  const getColors = (status: string) => {
-    switch (status) {
-      case 'Critical':
-        return { barColor: '#b91c1c', textColor: '#b91c1c', badgeBg: '#b91c1c20', badgeBorder: '#b91c1c40' };
-      case 'High Risk':
-        return { barColor: '#ef4444', textColor: '#dc2626', badgeBg: '#ef444420', badgeBorder: '#ef444440' };
-      case 'Needs Attention':
-        return { barColor: '#f59e0b', textColor: '#d97706', badgeBg: '#f59e0b20', badgeBorder: '#f59e0b40' };
-      default: // Healthy
-        return { barColor: '#22c55e', textColor: '#16a34a', badgeBg: '#22c55e20', badgeBorder: '#22c55e40' };
-    }
-  };
-
-  const colors = getColors(status);
+  const color = getStatusColor(status);
   const maxWeight = 4;
   const maxBarHeight = 120;
-  // Clamp dsi between 1 and 4 (since severity index is 1-4)
   const cappedDsi = Math.max(1, Math.min(dsi, maxWeight));
   const barHeight = ((cappedDsi - 1) / (maxWeight - 1)) * maxBarHeight;
 
   if (loading) {
     return (
-      <View style={styles.card}>
-        <Text style={styles.title}>Defect Severity Index</Text>
-        <ActivityIndicator size="large" color={Colors.primary} style={{ marginVertical: 20 }} />
-      </View>
+      <CardShell>
+        <ActivityIndicator size="large" color={Colors.primary} style={styles.loader} />
+      </CardShell>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.card}>
-        <Text style={styles.title}>Defect Severity Index</Text>
+      <CardShell>
         <Text style={styles.error}>{error}</Text>
-      </View>
+      </CardShell>
     );
   }
 
   return (
-    <View style={styles.card}>
-      <Text style={styles.title}>Defect Severity Index</Text>
+    <CardShell>
       <View style={styles.content}>
-        {/* Bar + Labels */}
         <View style={styles.barContainer}>
-         <View style={styles.barWrapper}>
-           {/* Background bar */}
-           <View style={[styles.barBackground, { height: maxBarHeight }]}>
-             <View
-               style={[
-                 styles.barFill,
-                 { height: barHeight, backgroundColor: colors.barColor },
-               ]}
-             />
-           </View>
-           {/* Labels 1-4 */}
-           <View style={[styles.labels, { height: maxBarHeight }]}>
-             <Text style={styles.label}>4</Text>
-             <Text style={styles.label}>3</Text>
-             <Text style={styles.label}>2</Text>
-             <Text style={styles.label}>1</Text>
-           </View>
-         </View>
-
-          {/* Value and badge */}
-          <View style={styles.valueContainer}>
-            <Text style={[styles.dsiValue, { color: colors.textColor }]}>
-              {dsi.toFixed(2)}
-            </Text>
-            <View
-              style={[
-                styles.badge,
-                {
-                  backgroundColor: colors.badgeBg,
-                  borderColor: colors.badgeBorder,
-                },
-              ]}
-            >
-              <Text style={[styles.badgeText, { color: colors.textColor }]}>
-                {status}
-              </Text>
+          <View style={styles.barWrapper}>
+            <View style={[styles.barBackground, { height: maxBarHeight }]}>
+              <View style={[styles.barFill, { height: barHeight, backgroundColor: color }]} />
             </View>
+            <View style={[styles.labels, { height: maxBarHeight }]}>
+              <Text style={styles.label}>4</Text>
+              <Text style={styles.label}>3</Text>
+              <Text style={styles.label}>2</Text>
+              <Text style={styles.label}>1</Text>
+            </View>
+          </View>
+
+          <View style={styles.valueContainer}>
+            <Text style={[styles.dsiValue, { color }]}>{dsi.toFixed(2)}</Text>
+            <Chip label={status} color={color} size="md" dot />
             <Text style={styles.description}>
               Weighted severity score (higher = more severe defects)
             </Text>
           </View>
         </View>
       </View>
-    </View>
+    </CardShell>
   );
 };
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginVertical: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    marginVertical: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    ...Shadows.card,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
   },
   title: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#0f172a',
-    marginBottom: 8,
+    ...Typography.cardTitle,
   },
   content: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
+    paddingVertical: Spacing.sm,
   },
   barContainer: {
     flexDirection: 'row',
@@ -140,62 +129,51 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'center',
-    marginRight: 20,
+    marginRight: Spacing.xl,
   },
   barBackground: {
     width: 28,
-    backgroundColor: '#f3f4f6',
-    borderRadius: 16,
+    backgroundColor: withAlpha(Colors.textLight, 0.18),
+    borderRadius: Radius.lg,
     overflow: 'hidden',
     justifyContent: 'flex-end',
     position: 'relative',
   },
   barFill: {
     width: '100%',
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
+    borderRadius: Radius.lg,
     position: 'absolute',
     bottom: 0,
   },
   labels: {
-    marginLeft: 8,
+    marginLeft: Spacing.sm,
     justifyContent: 'space-between',
   },
   label: {
-    fontSize: 12,
-    color: '#64748b',
-    fontWeight: '500',
+    ...Typography.caption,
+    color: Colors.textSecondary,
   },
   valueContainer: {
     alignItems: 'center',
-    marginLeft: 8,
+    marginLeft: Spacing.sm,
     flex: 1,
+    gap: Spacing.sm,
   },
   dsiValue: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  badge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 20,
-    borderWidth: 1,
-    marginBottom: 8,
-  },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: '600',
+    ...Typography.metricValue,
+    fontSize: 34,
   },
   description: {
-    fontSize: 12,
-    color: '#64748b',
+    ...Typography.caption,
     textAlign: 'center',
-    marginTop: 4,
+    marginTop: 2,
   },
   error: {
-    color: '#ef4444',
+    ...Typography.errorText,
     textAlign: 'center',
-    paddingVertical: 10,
+    paddingVertical: Spacing.md,
+  },
+  loader: {
+    marginVertical: Spacing.xl,
   },
 });

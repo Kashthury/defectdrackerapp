@@ -19,11 +19,35 @@ export const Typography = StyleSheet.create({
     color: Colors.text,
     fontFamily: fontFamily.bold,
   },
-  // Secondary heading, used for section/card headers
+  // Slightly smaller hero title for stacked/detail screens.
+  screenTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    letterSpacing: -0.6,
+    color: Colors.text,
+    fontFamily: fontFamily.bold,
+  },
+  // Secondary heading, used for the main section headers on a screen.
   heading: {
     fontSize: 22,
     fontWeight: '700',
     letterSpacing: -0.5,
+    color: Colors.text,
+    fontFamily: fontFamily.bold,
+  },
+  // Section header sitting between `heading` and body — groups of cards.
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    color: Colors.text,
+    fontFamily: fontFamily.bold,
+  },
+  // Title inside a card/panel (replaces the scattered 16/600 inline styles).
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: -0.2,
     color: Colors.text,
     fontFamily: fontFamily.bold,
   },
@@ -88,5 +112,21 @@ export const Typography = StyleSheet.create({
     fontWeight: '600',
     color: Colors.error,
     fontFamily: fontFamily.medium,
+  },
+  // Large emphasized stat number (dashboard / metric cards).
+  metricValue: {
+    fontSize: 30,
+    fontWeight: '800',
+    letterSpacing: -1,
+    color: Colors.text,
+    fontFamily: fontFamily.bold,
+  },
+  // Compact, bold label used inside chips & badges.
+  chipText: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+    color: Colors.text,
+    fontFamily: fontFamily.bold,
   },
 });

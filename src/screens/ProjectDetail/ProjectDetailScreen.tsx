@@ -26,6 +26,7 @@ import { getUserProjects } from '../../services/projectService';
 import { getCombinedRisk } from '../../utils/riskUtils';
 import { Colors } from '../../constants/colors';
 import { Typography } from '../../constants/typography';
+import { Spacing, Radius, Shadows } from '../../constants/theme';
 import { ENDPOINTS } from '../../constants/endpoints';
 import apiClient from '../../lib/api';
 import {
@@ -555,7 +556,10 @@ const ProjectDetailScreen = () => {
       />
 
       <View style={styles.statusBar}>
-        <Text style={styles.projectName}>{projectName}</Text>
+        <View style={styles.statusBarText}>
+          <Text style={styles.eyebrow}>Project</Text>
+          <Text style={styles.projectName} numberOfLines={2}>{projectName}</Text>
+        </View>
         <RiskBadge risk={risk} />
       </View>
 
@@ -624,6 +628,7 @@ const ProjectDetailScreen = () => {
 
       {/* ====== TIME TO FIND & TIME TO FIX CHARTS ====== */}
       <View style={styles.chartsSection}>
+        <Text style={styles.sectionTitle}>Trends Over Time</Text>
         <View style={styles.releaseRow}>
           <Text style={styles.releaseLabel}>Release:</Text>
           <Dropdown
@@ -766,64 +771,71 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    backgroundColor: Colors.white,
-    borderRadius: 12,
-    elevation: 2,
-  },
-  projectName: { fontSize: 20, fontWeight: 'bold', color: Colors.text },
-  defectDensityCard: {
-    backgroundColor: Colors.white,
-    borderRadius: 12,
-    padding: 16,
-    marginVertical: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
+    gap: Spacing.md,
+    marginBottom: Spacing.lg,
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
     borderWidth: 1,
     borderColor: Colors.border,
+    ...Shadows.card,
   },
-  cardTitle: { fontSize: 16, fontWeight: '600', color: Colors.text, marginBottom: 8 },
-  noData: { color: Colors.textLight, textAlign: 'center', paddingVertical: 20 },
-  errorText: { color: Colors.error, textAlign: 'center', marginTop: 8, fontSize: 14 },
-  chartsSection: { marginTop: 24 },
+  statusBarText: {
+    flex: 1,
+  },
+  eyebrow: {
+    ...Typography.overline,
+    color: Colors.primary,
+    marginBottom: 2,
+  },
+  projectName: { ...Typography.screenTitle, fontSize: 22 },
+  defectDensityCard: {
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    marginVertical: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    ...Shadows.card,
+  },
+  cardTitle: { ...Typography.cardTitle, marginBottom: Spacing.md },
+  noData: { color: Colors.textLight, textAlign: 'center', paddingVertical: Spacing.xl },
+  errorText: { ...Typography.errorText, textAlign: 'center', marginTop: Spacing.sm },
+  chartsSection: { marginTop: Spacing.xxl },
+  sectionTitle: {
+    ...Typography.sectionTitle,
+    marginBottom: Spacing.md,
+    marginLeft: Spacing.xs,
+  },
   releaseRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: Spacing.lg,
     flexWrap: 'wrap',
-    backgroundColor: Colors.white,
-    padding: 12,
-    borderRadius: 12,
+    backgroundColor: Colors.card,
+    padding: Spacing.md,
+    borderRadius: Radius.lg,
     borderWidth: 1,
     borderColor: Colors.border,
+    ...Shadows.soft,
   },
-  releaseLabel: { fontSize: 16, fontWeight: '600', color: Colors.text, marginRight: 8 },
+  releaseLabel: { ...Typography.cardTitle, marginRight: Spacing.sm },
   chartsRow: {
     flexDirection: 'column',
-    gap: 16,
+    gap: Spacing.lg,
   },
   chartCard: {
-    backgroundColor: Colors.white,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    marginBottom: Spacing.lg,
     minHeight: 200,
     borderWidth: 1,
     borderColor: Colors.border,
+    ...Shadows.card,
   },
-  chartTitle: { fontSize: 16, fontWeight: '600', color: Colors.text, marginBottom: 8 },
+  chartTitle: { ...Typography.cardTitle, marginBottom: Spacing.md },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(12, 74, 110, 0.4)', // Deep Sky Blue overlay

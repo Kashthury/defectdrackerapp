@@ -1,6 +1,9 @@
 import React from 'react';
 import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
+import { Colors } from '../../constants/colors';
+import { Typography } from '../../constants/typography';
+import { Radius } from '../../constants/theme';
 
 interface TimeLineChartProps {
   data: { day: string; value: number }[];
@@ -44,7 +47,7 @@ export const TimeLineChart: React.FC<TimeLineChartProps> = ({ data, color, label
           backgroundGradientFrom: '#ffffff',
           backgroundGradientTo: '#ffffff',
           decimalPlaces: 0,
-          color: (opacity = 1) => color,
+          color: () => color,
           labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
           style: { borderRadius: 16 },
           propsForDots: {
@@ -60,8 +63,9 @@ export const TimeLineChart: React.FC<TimeLineChartProps> = ({ data, color, label
         yAxisInterval={1}
         yAxisLabel=""
         yAxisSuffix=""
-        yMin={0}
-        yMax={yMax}
+        // yMin/yMax are supported by the chart at runtime but missing from its
+        // TypeScript types, so they are passed via a typed spread.
+        {...({ yMin: 0, yMax } as any)}
       />
       <Text style={styles.yAxisLabel}>{label}</Text>
     </View>
@@ -70,8 +74,8 @@ export const TimeLineChart: React.FC<TimeLineChartProps> = ({ data, color, label
 
 const styles = StyleSheet.create({
   container: { alignItems: 'center' },
-  chart: { borderRadius: 16 },
-  yAxisLabel: { fontSize: 12, color: '#64748b', textAlign: 'center', marginTop: 4 },
+  chart: { borderRadius: Radius.lg },
+  yAxisLabel: { ...Typography.caption, color: Colors.textSecondary, textAlign: 'center', marginTop: 4 },
   placeholderContainer: { paddingVertical: 20, alignItems: 'center' },
-  placeholderText: { fontSize: 14, color: '#94a3b8' },
+  placeholderText: { ...Typography.subtitle, fontSize: 14, color: Colors.textLight },
 });

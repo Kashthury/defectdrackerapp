@@ -1,36 +1,22 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { Colors } from '../../constants/colors';
+import { Chip } from './Chip';
+import { getRiskMeta } from '../../utils/colorUtils';
+import type { RiskLevel } from '../../utils/riskUtils';
 
 interface RiskBadgeProps {
-  risk: 'high' | 'medium' | 'low';
+  risk: RiskLevel;
+  size?: 'sm' | 'md' | 'lg';
+  /** Solid (default) reads as a status pill; soft is lighter for dense UIs. */
+  variant?: 'solid' | 'soft';
 }
 
-const RiskBadge: React.FC<RiskBadgeProps> = ({ risk }) => {
-  const getColor = () => {
-    switch (risk) {
-      case 'high': return Colors.error;
-      case 'medium': return Colors.warning;
-      default: return Colors.success;
-    }
-  };
-  const label = risk.charAt(0).toUpperCase() + risk.slice(1) + ' Risk';
-
-  return (
-    <View style={[styles.badge, { backgroundColor: getColor() }]}>
-      <Text style={styles.text}>{label}</Text>
-    </View>
-  );
+/**
+ * Canonical risk pill used across the app. Color, icon and label all come from
+ * the single risk color scheme in colorUtils.getRiskMeta.
+ */
+const RiskBadge: React.FC<RiskBadgeProps> = ({ risk, size = 'md', variant = 'solid' }) => {
+  const meta = getRiskMeta(risk);
+  return <Chip label={meta.label} color={meta.color} icon={meta.icon} variant={variant} size={size} />;
 };
-
-const styles = StyleSheet.create({
-  badge: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 20,
-    alignSelf: 'flex-start',
-  },
-  text: { color: '#fff', fontWeight: '700', fontSize: 14 },
-});
 
 export default RiskBadge;

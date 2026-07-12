@@ -36,6 +36,7 @@ import { Modal } from '../../components/common/Modal';
 import Dropdown from '../../components/common/Dropdown';
 import Icon from 'react-native-vector-icons/Feather';
 import { getApiErrorMessage } from '../../utils/apiError';
+import { buildColorMap } from '../../utils/colorUtils';
 
 const PAGE_SIZE = 20;
 
@@ -234,8 +235,10 @@ const DefectsScreen = () => {
           description: item.description,
           severityId: item.severityId || item.severity?.id,
           severityName: item.severityName || item.severity?.name,
+          severityColor: item.severityColor || item.severity?.color,
           priorityId: item.priorityId || item.priority?.id,
           priorityName: item.priorityName || item.priority?.name,
+          priorityColor: item.priorityColor || item.priority?.color,
           statusId: statusObj.id || item.statusId,
           statusName: statusObj.name || item.statusName || (typeof item.status === 'string' ? item.status : 'Unknown'),
           statusColor: statusObj.color || item.statusColor || '#64748b',
@@ -383,6 +386,11 @@ const DefectsScreen = () => {
   const allDefects = useMemo(() => defects, [defects]);
   const visibleDefects = activeTab === 'MY' ? myDefects : allDefects;
 
+  // id -> backend color lookups so severity/priority chips use real hues even
+  // when an individual defect payload doesn't inline its own color.
+  const severityColorMap = useMemo(() => buildColorMap(options.severities), [options.severities]);
+  const priorityColorMap = useMemo(() => buildColorMap(options.priorities), [options.priorities]);
+
   return (
     <SafeAreaView style={styles.container}>
       <DefectFilterArea
@@ -417,12 +425,15 @@ const DefectsScreen = () => {
         <FlatList
           data={visibleDefects}
           keyExtractor={(item) => item.id.toString()}
-          renderItem={({ item }) => (
+          renderItem={({ item, index }) => (
             <DefectCard
               defect={item}
               isMyDefect={activeTab === 'MY'}
               onStatusChange={handleStatusChange}
               onReassign={handleReassignInitiate}
+              severityColorMap={severityColorMap}
+              priorityColorMap={priorityColorMap}
+              index={index}
             />
           )}
           contentContainerStyle={styles.listContent}

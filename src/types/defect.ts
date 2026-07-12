@@ -4,8 +4,10 @@ export interface Defect {
   description: string;
   severityId: number;
   severityName: string;
+  severityColor?: string;
   priorityId: number;
   priorityName: string;
+  priorityColor?: string;
   statusId: number;
   statusName: string;
   statusColor?: string;

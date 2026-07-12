@@ -1,14 +1,29 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import Icon from 'react-native-vector-icons/Feather';
 import { Colors } from '../../constants/colors';
+import { Typography } from '../../constants/typography';
+import { Radius, Spacing, Shadows } from '../../constants/theme';
+import { Chip } from '../common/Chip';
+import { resolveChipColor, withAlpha } from '../../utils/colorUtils';
 
 interface DefectToRemarkRatioProps {
-  ratio: string;       // e.g., "71.43%"
-  category: string;    // "High", "Medium", "Low"
-  color: string;       // hex color or named color
+  ratio: string; // e.g., "71.43%"
+  category: string; // "High", "Medium", "Low"
+  color: string; // hex color or named color
   loading?: boolean;
   error?: string | null;
 }
+
+const CardShell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <View style={styles.card}>
+    <View style={styles.titleRow}>
+      <Icon name="percent" size={16} color={Colors.textSecondary} />
+      <Text style={styles.title}>Defect to Remark Ratio</Text>
+    </View>
+    {children}
+  </View>
+);
 
 export const DefectToRemarkRatio: React.FC<DefectToRemarkRatioProps> = ({
   ratio,
@@ -17,145 +32,115 @@ export const DefectToRemarkRatio: React.FC<DefectToRemarkRatioProps> = ({
   loading = false,
   error = null,
 }) => {
-  // Parse percentage from "71.43%" -> 71.43
   const percentage = parseFloat(ratio.replace('%', '')) || 0;
   const barWidth = Math.min(percentage, 100);
-
-  // Map category to background color for badge
-  const getBadgeBg = (cat: string) => {
-    switch (cat.toLowerCase()) {
-      case 'high': return '#fef2f2';
-      case 'medium': return '#fffbeb';
-      case 'low': return '#f0fdf4';
-      default: return '#f1f5f9';
-    }
-  };
-
-  const badgeBg = getBadgeBg(category);
+  // Prefer the backend color; fall back to a category-based hue.
+  const accent = resolveChipColor(color, category);
 
   if (loading) {
     return (
-      <View style={styles.card}>
-        <Text style={styles.title}>Defect to Remark Ratio</Text>
-        <ActivityIndicator size="large" color={Colors.primary} style={{ marginVertical: 20 }} />
-      </View>
+      <CardShell>
+        <ActivityIndicator size="large" color={Colors.primary} style={styles.loader} />
+      </CardShell>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.card}>
-        <Text style={styles.title}>Defect to Remark Ratio</Text>
+      <CardShell>
         <Text style={styles.error}>{error}</Text>
-      </View>
+      </CardShell>
     );
   }
 
   return (
-    <View style={styles.card}>
-      <Text style={styles.title}>Defect to Remark Ratio</Text>
+    <CardShell>
       <View style={styles.content}>
-        {/* Large percentage */}
-        <Text style={[styles.percentage, { color }]}>
-          {ratio}
-        </Text>
+        <Text style={[styles.percentage, { color: accent }]}>{ratio}</Text>
 
-        {/* Bar */}
         <View style={styles.barContainer}>
           <View style={styles.barBackground}>
-            <View style={[styles.barFill, { width: `${barWidth}%`, backgroundColor: color }]} />
+            <View style={[styles.barFill, { width: `${barWidth}%`, backgroundColor: accent }]} />
           </View>
         </View>
 
-        {/* Tick marks */}
         <View style={styles.ticks}>
           <Text style={styles.tickLabel}>0%</Text>
           <Text style={styles.tickLabel}>50%</Text>
           <Text style={styles.tickLabel}>100%</Text>
         </View>
 
-        {/* Category badge */}
-        <View style={[styles.badge, { backgroundColor: badgeBg }]}>
-          <Text style={[styles.badgeText, { color }]}>{category}</Text>
+        <View style={styles.badgeWrap}>
+          <Chip label={category} color={accent} size="md" dot />
         </View>
       </View>
-    </View>
+    </CardShell>
   );
 };
 
-// (Add ActivityIndicator import at top if not already)
-import { ActivityIndicator } from 'react-native';
-
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginVertical: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    marginVertical: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    ...Shadows.card,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
   },
   title: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#0f172a',
-    marginBottom: 8,
+    ...Typography.cardTitle,
   },
   content: {
     alignItems: 'center',
-    paddingVertical: 4,
+    paddingVertical: Spacing.xs,
   },
   percentage: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    marginBottom: 8,
+    ...Typography.metricValue,
+    fontSize: 38,
+    marginBottom: Spacing.sm,
   },
   barContainer: {
     width: '100%',
-    paddingHorizontal: 4,
+    paddingHorizontal: Spacing.xs,
   },
   barBackground: {
     width: '100%',
     height: 10,
-    backgroundColor: '#e5e7eb',
-    borderRadius: 5,
+    backgroundColor: withAlpha(Colors.textLight, 0.2),
+    borderRadius: Radius.xs,
     overflow: 'hidden',
   },
   barFill: {
     height: '100%',
-    borderRadius: 5,
+    borderRadius: Radius.xs,
   },
   ticks: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '100%',
-    paddingHorizontal: 4,
-    marginTop: 4,
+    paddingHorizontal: Spacing.xs,
+    marginTop: Spacing.xs,
   },
   tickLabel: {
-    fontSize: 12,
-    color: '#64748b',
-    fontWeight: '500',
+    ...Typography.caption,
+    color: Colors.textSecondary,
   },
-  badge: {
-    marginTop: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  badgeText: {
-    fontSize: 14,
-    fontWeight: '600',
-    textTransform: 'capitalize',
+  badgeWrap: {
+    marginTop: Spacing.md,
   },
   error: {
-    color: '#ef4444',
+    ...Typography.errorText,
     textAlign: 'center',
-    paddingVertical: 10,
+    paddingVertical: Spacing.md,
+  },
+  loader: {
+    marginVertical: Spacing.xl,
   },
 });

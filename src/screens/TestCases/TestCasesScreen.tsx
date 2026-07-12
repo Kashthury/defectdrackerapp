@@ -22,6 +22,8 @@ import {
   getProjectEmployees,
   reassignTestCase,
 } from '../../services/testCaseService';
+import { getSeverities, getPriorities } from '../../services/defectService';
+import { buildColorMap } from '../../utils/colorUtils';
 import {
   TestCase,
   ProjectEmployee,
@@ -65,8 +67,10 @@ const TestCasesScreen = () => {
   const [filters, setFilters] = useState({ ...INITIAL_FILTERS });
 
   // Options for filters
-  const [options, setOptions] = useState<{ modules: any[] }>({
+  const [options, setOptions] = useState<{ modules: any[]; severities: any[]; priorities: any[] }>({
     modules: [],
+    severities: [],
+    priorities: [],
   });
   const [subModules, setSubModules] = useState<SubModuleOption[]>([]);
   const [subModulesLoading, setSubModulesLoading] = useState(false);
@@ -128,8 +132,12 @@ const TestCasesScreen = () => {
         }
       };
 
-      const modules = await safeFetch(getProjectModules(projectId), 'Modules');
-      setOptions({ modules });
+      const [modules, severities, priorities] = await Promise.all([
+        safeFetch(getProjectModules(projectId), 'Modules'),
+        safeFetch(getSeverities(), 'Severities'),
+        safeFetch(getPriorities(), 'Priorities'),
+      ]);
+      setOptions({ modules, severities, priorities });
     } catch (error: any) {
       console.error('❌ Failed to fetch active release:', error);
       toast.error('Failed to load active release.');
@@ -194,8 +202,10 @@ const TestCasesScreen = () => {
           description: item.description || '',
           severityId: item.severityId || item.severity?.id,
           severityName: item.severityName || item.severity?.name || 'Unknown',
+          severityColor: item.severityColor || item.severity?.color,
           priorityId: item.priorityId || item.priority?.id,
           priorityName: item.priorityName || item.priority?.name || 'Unknown',
+          priorityColor: item.priorityColor || item.priority?.color,
           testCaseTypeId: item.defectTypeId,
           testCaseTypeName: item.defectTypeName || 'Unknown',
           moduleId: item.moduleId || item.module?.id,
@@ -325,6 +335,9 @@ const TestCasesScreen = () => {
   const allTestCases = useMemo(() => testCases, [testCases]);
   const visibleTestCases = activeTab === 'MY' ? myTestCases : allTestCases;
 
+  const severityColorMap = useMemo(() => buildColorMap(options.severities), [options.severities]);
+  const priorityColorMap = useMemo(() => buildColorMap(options.priorities), [options.priorities]);
+
   return (
     <SafeAreaView style={styles.container}>
       <TestCaseFilterArea
@@ -359,11 +372,14 @@ const TestCasesScreen = () => {
         <FlatList
           data={visibleTestCases}
           keyExtractor={(item) => item.id.toString()}
-          renderItem={({ item }) => (
+          renderItem={({ item, index }) => (
             <TestCaseCard
               testCase={item}
               isMyTestCase={activeTab === 'MY'}
               onReassign={handleReassignInitiate}
+              severityColorMap={severityColorMap}
+              priorityColorMap={priorityColorMap}
+              index={index}
             />
           )}
           contentContainerStyle={styles.listContent}

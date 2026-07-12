@@ -5,16 +5,21 @@ import {
   StyleSheet,
   FlatList,
   ActivityIndicator,
-  TouchableOpacity,
   TextInput,
   Modal,
   TouchableWithoutFeedback,
 } from 'react-native';
 import { Colors } from '../../constants/colors';
+import { Typography } from '../../constants/typography';
+import { Radius, Spacing, Shadows } from '../../constants/theme';
+import { withAlpha } from '../../utils/colorUtils';
 import { usePermission } from '../../context/PermissionContext';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Feather';
 import Dropdown from '../../components/common/Dropdown';
+import { Chip } from '../../components/common/Chip';
+import { FadeInView } from '../../components/common/FadeInView';
+import { AnimatedPressable } from '../../components/common/AnimatedPressable';
 import { getAllProjects } from '../../services/projectService';
 
 // ---- Stable fallback (module-level, not recreated every render) ----
@@ -22,17 +27,6 @@ const DEFAULT_PERMISSION_DATA = {
   isAdmin: false,
   userProjects: [] as any[],
   isLoading: false,
-};
-
-// ---- Helper functions ----
-const getDaysLeft = (endDate: string) => {
-  if (!endDate) return 'N/A';
-  const today = new Date();
-  const end = new Date(endDate);
-  const diffTime = end.getTime() - today.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  if (diffDays < 0) return 'Overdue';
-  return `${diffDays} day${diffDays !== 1 ? 's' : ''}`;
 };
 
 const formatDate = (dateString: string) => {
@@ -44,13 +38,13 @@ const formatDate = (dateString: string) => {
 const getStatusColor = (status: string) => {
   switch (status?.toLowerCase()) {
     case 'active':
-      return '#22c55e';
+      return Colors.success;
     case 'on hold':
-      return '#f59e0b';
+      return Colors.warning;
     case 'completed':
-      return '#3b82f6';
+      return Colors.info;
     default:
-      return '#94a3b8';
+      return Colors.textLight;
   }
 };
 
@@ -58,9 +52,9 @@ const getStatusColor = (status: string) => {
 // status IN ('Active', 'On Hold', 'Completed'). Values are sent verbatim to
 // the `status` query param, so they must match the backend exactly.
 const PROJECT_STATUS_OPTIONS = [
-  { label: 'Active', value: 'Active', color: '#22c55e' },
-  { label: 'On Hold', value: 'On Hold', color: '#f59e0b' },
-  { label: 'Completed', value: 'Completed', color: '#3b82f6' },
+  { label: 'Active', value: 'Active', color: Colors.success },
+  { label: 'On Hold', value: 'On Hold', color: Colors.warning },
+  { label: 'Completed', value: 'Completed', color: Colors.info },
 ];
 
 const ProjectScreen = () => {
@@ -157,65 +151,65 @@ const ProjectScreen = () => {
     }
   };
 
-  const renderItem = ({ item }: { item: any }) => {
+  const renderItem = ({ item, index }: { item: any; index: number }) => {
     const daysLeft = item.endDate
       ? Math.ceil(
           (new Date(item.endDate).getTime() - new Date().getTime()) /
             (1000 * 60 * 60 * 24)
         )
       : 0;
+    const statusColor = getStatusColor(item.status);
 
     return (
-      <TouchableOpacity
-        style={styles.projectCard}
-        onPress={() => openOptionModal(item)}
-        activeOpacity={0.7}
-      >
-        <View style={styles.cardMainContent}>
-          <View style={styles.topRow}>
-            <Text style={styles.projectName} numberOfLines={1}>
-              {item.name || 'Unnamed Project'}
-            </Text>
-            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
-              <Text style={styles.statusText}>{item.status || 'Unknown'}</Text>
+      <FadeInView delay={(index % 12) * 45}>
+        <AnimatedPressable
+          style={[styles.projectCard, { borderLeftColor: statusColor }]}
+          onPress={() => openOptionModal(item)}
+        >
+          <View style={styles.cardMainContent}>
+            <View style={styles.topRow}>
+              <Text style={styles.projectName} numberOfLines={1}>
+                {item.name || 'Unnamed Project'}
+              </Text>
+              <Chip label={item.status || 'Unknown'} color={statusColor} variant="solid" size="sm" />
             </View>
-          </View>
 
-          <View style={styles.timelineRow}>
-            <Icon name="calendar" size={14} color={Colors.textSecondary || '#64748b'} />
-            <Text style={styles.timelineText}>
-              {formatDate(item.startDate)} - {formatDate(item.endDate)}
-            </Text>
-          </View>
-
-          {daysLeft > 0 && (
-            <View style={styles.daysRow}>
-              <Icon name="clock" size={14} color={Colors.textSecondary || '#64748b'} />
-              <Text style={styles.daysText}>Days Left: {daysLeft} days</Text>
-            </View>
-          )}
-
-          {item.projectManagerName && (
-            <View style={styles.managerRow}>
-              <Icon name="user" size={14} color={Colors.textSecondary || '#64748b'} />
-              <Text style={styles.managerText} numberOfLines={1}>
-                Project Manager: {item.projectManagerName}
+            <View style={styles.metaRow}>
+              <Icon name="calendar" size={14} color={Colors.textLight} />
+              <Text style={styles.metaText}>
+                {formatDate(item.startDate)} - {formatDate(item.endDate)}
               </Text>
             </View>
-          )}
-        </View>
 
-        <View style={styles.chevronContainer}>
-          <Icon name="chevron-right" size={24} color={Colors.primary || '#3b82f6'} />
-        </View>
-      </TouchableOpacity>
+            {daysLeft > 0 && (
+              <View style={styles.metaRow}>
+                <Icon name="clock" size={14} color={Colors.textLight} />
+                <Text style={styles.metaText}>Days Left: {daysLeft} days</Text>
+              </View>
+            )}
+
+            {item.projectManagerName && (
+              <View style={styles.metaRow}>
+                <Icon name="user" size={14} color={Colors.textLight} />
+                <Text style={styles.metaText} numberOfLines={1}>
+                  {item.projectManagerName}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.chevronContainer}>
+            <Icon name="chevron-right" size={22} color={Colors.primary} />
+          </View>
+        </AnimatedPressable>
+      </FadeInView>
     );
   };
 
   if ((loading && projects.length === 0) || permissionLoading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color={Colors.primary || '#3b82f6'} />
+        <ActivityIndicator size="large" color={Colors.primary} />
       </View>
     );
   }
@@ -224,9 +218,9 @@ const ProjectScreen = () => {
     return (
       <View style={styles.centered}>
         <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity onPress={fetchProjects} style={styles.retryButton}>
+        <AnimatedPressable onPress={fetchProjects} style={styles.retryButton}>
           <Text style={styles.retryText}>Retry</Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
       </View>
     );
   }
@@ -237,16 +231,17 @@ const ProjectScreen = () => {
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.titleRow}>
-          <View>
-            <Text style={styles.title}>All Projects</Text>
-            <Text style={styles.subtitle}>
+          <View style={styles.flex}>
+            <Text style={styles.eyebrow}>Workspace</Text>
+            <Text style={Typography.title}>All Projects</Text>
+            <Text style={[Typography.subtitle, styles.subtitle]}>
               {isAdmin ? 'Manage your projects and teams' : 'View your assigned projects'}
             </Text>
           </View>
           {isFiltered && (
-            <TouchableOpacity onPress={clearFilters} style={styles.clearAllButton}>
+            <AnimatedPressable onPress={clearFilters} style={styles.clearAllButton}>
               <Text style={styles.clearAllText}>Clear All</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           )}
         </View>
       </View>
@@ -254,18 +249,18 @@ const ProjectScreen = () => {
       {/* Search & Filter Bar */}
       <View style={styles.filterContainer}>
         <View style={styles.searchWrapper}>
-          <Icon name="search" size={18} color={Colors.textSecondary || '#64748b'} style={styles.searchIcon} />
+          <Icon name="search" size={18} color={Colors.textLight} style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
             placeholder="Search projects..."
-            placeholderTextColor={Colors.textSecondary || '#64748b'}
+            placeholderTextColor={Colors.textLight}
             value={searchTerm}
             onChangeText={setSearchTerm}
           />
           {searchTerm.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchTerm('')}>
-              <Icon name="x" size={18} color={Colors.textSecondary || '#64748b'} />
-            </TouchableOpacity>
+            <AnimatedPressable onPress={() => setSearchTerm('')}>
+              <Icon name="x" size={18} color={Colors.textLight} />
+            </AnimatedPressable>
           )}
         </View>
 
@@ -285,7 +280,7 @@ const ProjectScreen = () => {
         contentContainerStyle={styles.list}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Icon name="folder" size={60} color={Colors.textSecondary || '#64748b'} />
+            <Icon name="folder" size={56} color={Colors.borderStrong} />
             <Text style={styles.emptyTitle}>
               {isAdmin ? 'No projects yet' : 'No projects assigned'}
             </Text>
@@ -313,21 +308,25 @@ const ProjectScreen = () => {
                 <Text style={styles.modalProjectName}>{selectedProject?.name}</Text>
 
                 <View style={styles.optionsRow}>
-                  <TouchableOpacity
-                    style={[styles.optionCard, { borderColor: Colors.primary || '#3b82f6' }]}
+                  <AnimatedPressable
+                    style={[styles.optionCard, { borderColor: withAlpha(Colors.primary, 0.4) }]}
                     onPress={() => handleOptionSelect('testcases')}
                   >
-                    <Icon name="file-text" size={32} color={Colors.primary || '#3b82f6'} />
+                    <View style={[styles.optionIcon, { backgroundColor: withAlpha(Colors.primary, 0.12) }]}>
+                      <Icon name="file-text" size={28} color={Colors.primary} />
+                    </View>
                     <Text style={styles.optionLabel}>Testcases</Text>
-                  </TouchableOpacity>
+                  </AnimatedPressable>
 
-                  <TouchableOpacity
-                    style={[styles.optionCard, { borderColor: '#ef4444' }]}
+                  <AnimatedPressable
+                    style={[styles.optionCard, { borderColor: withAlpha(Colors.error, 0.4) }]}
                     onPress={() => handleOptionSelect('defects')}
                   >
-                    <Icon name="alert-circle" size={32} color="#ef4444" />
+                    <View style={[styles.optionIcon, { backgroundColor: withAlpha(Colors.error, 0.12) }]}>
+                      <Icon name="alert-circle" size={28} color={Colors.error} />
+                    </View>
                     <Text style={styles.optionLabel}>Defects</Text>
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                 </View>
               </View>
             </TouchableWithoutFeedback>
@@ -339,105 +338,103 @@ const ProjectScreen = () => {
 };
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   container: {
     flex: 1,
-    backgroundColor: Colors.background || '#f8fafc',
-    padding: 16,
+    backgroundColor: Colors.background,
+    padding: Spacing.lg,
   },
   header: {
-    marginBottom: 16,
+    marginBottom: Spacing.lg,
   },
   titleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: Colors.text || '#0f172a',
+  eyebrow: {
+    ...Typography.overline,
+    color: Colors.primary,
     marginBottom: 2,
   },
   subtitle: {
-    fontSize: 14,
-    color: Colors.textSecondary || '#64748b',
+    marginTop: 2,
   },
   clearAllButton: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
   },
   clearAllText: {
-    color: Colors.primary || '#3b82f6',
-    fontWeight: '600',
+    ...Typography.link,
     fontSize: 14,
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.background || '#f8fafc',
-    paddingHorizontal: 20,
+    backgroundColor: Colors.background,
+    paddingHorizontal: Spacing.xl,
   },
   errorText: {
-    fontSize: 16,
-    color: '#ef4444',
+    ...Typography.subtitle,
+    color: Colors.error,
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: Spacing.lg,
   },
   retryButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    backgroundColor: Colors.primary || '#3b82f6',
-    borderRadius: 8,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    backgroundColor: Colors.primary,
+    borderRadius: Radius.md,
   },
   retryText: {
-    color: '#fff',
-    fontWeight: '600',
+    ...Typography.buttonText,
+    fontSize: 15,
   },
   filterContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
-    gap: 10,
+    marginBottom: Spacing.lg,
+    gap: Spacing.sm,
   },
   searchWrapper: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.white || '#ffffff',
-    borderRadius: 8,
-    paddingHorizontal: 12,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md,
     height: 48,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: Colors.border,
   },
   searchIcon: {
-    marginRight: 8,
+    marginRight: Spacing.sm,
   },
   searchInput: {
     flex: 1,
-    paddingVertical: 4,
-    fontSize: 14,
-    color: Colors.text || '#0f172a',
+    paddingVertical: Spacing.xs,
+    fontSize: 15,
+    color: Colors.text,
+    fontFamily: Typography.body.fontFamily,
   },
   statusDropdown: {
     flex: 1,
   },
   list: {
-    paddingBottom: 20,
+    paddingBottom: Spacing.xl,
   },
   projectCard: {
-    backgroundColor: Colors.white || '#ffffff',
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
+    backgroundColor: Colors.card,
+    padding: Spacing.lg,
+    borderRadius: Radius.lg,
+    marginBottom: Spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderLeftWidth: 4,
+    ...Shadows.card,
   },
   cardMainContent: {
     flex: 1,
@@ -446,130 +443,97 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: Spacing.sm,
+    gap: Spacing.sm,
   },
   projectName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.text || '#0f172a',
+    ...Typography.cardTitle,
+    fontSize: 17,
     flex: 1,
-    marginRight: 8,
   },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-  },
-  statusText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'capitalize',
-  },
-  timelineRow: {
+  metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: Spacing.xs,
+    gap: Spacing.xs,
   },
-  timelineText: {
-    fontSize: 14,
-    color: Colors.textSecondary || '#64748b',
-    marginLeft: 6,
-  },
-  daysRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  daysText: {
-    fontSize: 14,
-    color: Colors.textSecondary || '#64748b',
-    marginLeft: 6,
-  },
-  managerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  managerText: {
-    fontSize: 14,
-    color: Colors.textSecondary || '#64748b',
-    marginLeft: 6,
+  metaText: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
     flexShrink: 1,
   },
   chevronContainer: {
-    marginLeft: 10,
+    marginLeft: Spacing.sm,
     justifyContent: 'center',
   },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 60,
+    paddingVertical: Spacing.huge + Spacing.xl,
   },
   emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.text || '#0f172a',
-    marginTop: 12,
+    ...Typography.sectionTitle,
+    marginTop: Spacing.md,
   },
   emptySub: {
-    fontSize: 14,
-    color: Colors.textSecondary || '#64748b',
-    marginTop: 4,
+    ...Typography.caption,
+    color: Colors.textSecondary,
+    marginTop: Spacing.xs,
     textAlign: 'center',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: Colors.overlay,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: Spacing.xl,
   },
   optionModal: {
-    width: '85%',
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 20,
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.xxl,
+    padding: Spacing.xl,
     alignItems: 'center',
+    ...Shadows.elevated,
   },
   modalSmallTitle: {
-    fontSize: 14,
-    color: Colors.textSecondary || '#64748b',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 4,
+    ...Typography.overline,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.xs,
   },
   modalProjectName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.text || '#0f172a',
-    marginBottom: 20,
+    ...Typography.heading,
+    fontSize: 20,
+    marginBottom: Spacing.xl,
     textAlign: 'center',
   },
   optionsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     width: '100%',
-    gap: 15,
+    gap: Spacing.lg,
   },
   optionCard: {
     flex: 1,
     aspectRatio: 1,
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    borderWidth: 1,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    borderWidth: 1.5,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    gap: Spacing.sm,
+  },
+  optionIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: Radius.md,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   optionLabel: {
-    marginTop: 8,
+    ...Typography.bodyBold,
     fontSize: 14,
-    fontWeight: '600',
-    color: Colors.text || '#0f172a',
   },
 });
 
