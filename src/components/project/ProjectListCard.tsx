@@ -303,6 +303,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
+    paddingBottom: 16,
   },
   avatar: {
     borderRadius: Radius.md,

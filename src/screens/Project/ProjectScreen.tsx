@@ -663,7 +663,11 @@ const styles = StyleSheet.create({
     marginRight: Spacing.sm,
   },
   list: {
-    paddingTop: Spacing.sm,
+    // Give the first project card the same breathing room under the status
+    // filter chips that the empty state already has (its big paddingVertical
+    // supplies the gap). Without this the populated list sits too close to the
+    // chips and the filter's bottom margin looks collapsed.
+    paddingTop: Spacing.md,
     paddingBottom: Spacing.huge,
   },
   emptyContainer: {

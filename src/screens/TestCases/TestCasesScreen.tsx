@@ -50,6 +50,63 @@ const INITIAL_FILTERS = {
   subModuleId: '',
 };
 
+/**
+ * Resolve a test case's *current* execution status from the list payload.
+ *
+ * The backend has exposed this under different shapes across versions: a nested
+ * status object (`executionStatus` / `status` / a `*Execution` sub-object) or
+ * flat `*Name`/`*Id`/`*Color` fields. The old mapping only read
+ * `item.executionStatus` (+ flat `executionStatus*`), so whenever the API sent
+ * the status under any other key the card fell back to "Not Executed" and never
+ * reflected a status changed on the web — even though defectNo/priority (which
+ * already coalesce across several keys) updated fine. Coalescing here the same
+ * way keeps the badge in sync with the web app.
+ */
+const resolveExecutionStatus = (
+  item: any,
+): { executionStatusId?: number; executionStatusName: string; executionStatusColor: string } => {
+  // Nested status objects, most specific first; the generic `status` is a
+  // last-resort and may itself be a plain string.
+  const objectCandidates = [
+    item?.executionStatus,
+    item?.testCaseExecutionStatus,
+    item?.latestExecution?.executionStatus,
+    item?.latestExecution?.status,
+    item?.testCaseExecution?.executionStatus,
+    item?.testCaseExecution?.status,
+    item?.execution?.executionStatus,
+    item?.execution?.status,
+    item?.status,
+  ];
+
+  let id: number | undefined;
+  let name: string | undefined;
+  let color: string | undefined;
+
+  for (const candidate of objectCandidates) {
+    if (!candidate) continue;
+    if (typeof candidate === 'string') {
+      name = name ?? candidate;
+      continue;
+    }
+    id = id ?? candidate.id ?? candidate.statusId ?? candidate.executionStatusId;
+    name = name ?? candidate.name ?? candidate.statusName ?? candidate.executionStatusName;
+    color = color ?? candidate.color ?? candidate.statusColor ?? candidate.executionStatusColor;
+    if (name) break;
+  }
+
+  // Flat fields (various naming conventions).
+  id = id ?? item?.executionStatusId ?? item?.statusId ?? item?.testCaseStatusId;
+  name = name ?? item?.executionStatusName ?? item?.statusName ?? item?.testCaseStatusName;
+  color = color ?? item?.executionStatusColor ?? item?.statusColor ?? item?.testCaseStatusColor;
+
+  return {
+    executionStatusId: id,
+    executionStatusName: name || 'Not Executed',
+    executionStatusColor: color || '#64748b',
+  };
+};
+
 const TestCasesScreen = () => {
   const route = useRoute();
   const params: any = route.params || {};
@@ -256,8 +313,23 @@ const TestCasesScreen = () => {
         return;
       }
 
+      // Dev-only: surface the raw status-related fields of the first item so the
+      // exact backend key can be confirmed if the status still looks stale.
+      if (__DEV__ && pageNumber === 0 && rawTestCases[0]) {
+        const sample = rawTestCases[0];
+        console.log('🔎 Test case raw status fields (first item):', {
+          keys: Object.keys(sample),
+          executionStatus: sample.executionStatus,
+          status: sample.status,
+          executionStatusName: sample.executionStatusName,
+          statusName: sample.statusName,
+          latestExecution: sample.latestExecution,
+          testCaseExecution: sample.testCaseExecution,
+        });
+      }
+
       const newTestCases: TestCase[] = rawTestCases.map((item: any) => {
-        const executionStatus = item.executionStatus || {};
+        const executionStatus = resolveExecutionStatus(item);
         return {
           id: item.id,
           testCaseNo: item.no || item.testCaseNumber || `TC-${item.id}`,
@@ -279,9 +351,9 @@ const TestCasesScreen = () => {
           assignedToId: item.assignedToId || item.assignedTo?.id,
           assignedToName: (typeof item.assignedTo === 'string' ? item.assignedTo : item.assignedTo?.name) || item.assignedToName || 'Unassigned',
           defectNo: item.defectNo || item.defect?.defectNo || item.defectNumber,
-          executionStatusId: executionStatus.id || item.executionStatusId,
-          executionStatusName: executionStatus.name || item.executionStatusName || 'Not Executed',
-          executionStatusColor: executionStatus.color || item.executionStatusColor || '#64748b',
+          executionStatusId: executionStatus.executionStatusId,
+          executionStatusName: executionStatus.executionStatusName,
+          executionStatusColor: executionStatus.executionStatusColor,
           _raw: item
         };
       });

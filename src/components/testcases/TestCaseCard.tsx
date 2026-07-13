@@ -8,7 +8,68 @@ import { TestCase } from '../../types/testCase';
 import { Chip } from '../common/Chip';
 import { FadeInView } from '../common/FadeInView';
 import { AnimatedPressable } from '../common/AnimatedPressable';
-import { resolveChipColor } from '../../utils/colorUtils';
+import { resolveChipColor, withAlpha } from '../../utils/colorUtils';
+
+/**
+ * Maps a backend execution-status label to a semantic Feather icon so the
+ * status badge reads at a glance (check = passed, x = failed, etc.). Falls back
+ * to a neutral icon for custom/unknown statuses.
+ */
+const getExecutionStatusIcon = (name?: string): string => {
+  const key = (name || '').toLowerCase().trim();
+  if (!key) return 'help-circle';
+  if (key.includes('pass')) return 'check-circle';
+  if (key.includes('fail')) return 'x-circle';
+  if (key.includes('block')) return 'slash';
+  if (key.includes('skip')) return 'skip-forward';
+  if (key.includes('retest') || key.includes('reopen')) return 'refresh-cw';
+  if (key.includes('progress') || key.includes('running')) return 'loader';
+  if (key.includes('not') || key.includes('pending') || key.includes('todo') || key.includes('unexecut')) {
+    return 'circle';
+  }
+  return 'activity';
+};
+
+/**
+ * Hard-coded color scheme for execution statuses. The backend status color is
+ * unreliable (it frequently arrives as a generic gray), so the badge derives
+ * its color from the status name instead — green = passed, red = failed, amber =
+ * blocked, etc. — for a consistent, meaningful look across the app.
+ */
+const getExecutionStatusColor = (name?: string): string => {
+  const key = (name || '').toLowerCase().trim();
+  if (key.includes('pass')) return '#16A34A'; // green — passed
+  if (key.includes('fail')) return '#DC2626'; // red — failed
+  if (key.includes('block')) return '#D97706'; // amber — blocked
+  if (key.includes('progress') || key.includes('running')) return '#0284C7'; // sky — in progress
+  if (key.includes('retest') || key.includes('reopen')) return '#7C3AED'; // violet — retest
+  if (key.includes('skip')) return '#0D9488'; // teal — skipped
+  return '#64748B'; // slate — not executed / pending / unknown
+};
+
+/**
+ * Polished execution-status badge: an icon-led pill sitting on a soft tint of
+ * the status color with a hairline border. It reuses the app's chip/RiskBadge
+ * language (pill shape, Feather icon) while standing out as the card's primary
+ * status indicator. Both the icon and color are derived from the status name
+ * (hard-coded), so it stays meaningful regardless of the backend color.
+ */
+const StatusBadge: React.FC<{ label: string }> = ({ label }) => {
+  const color = getExecutionStatusColor(label);
+  return (
+    <View
+      style={[
+        styles.statusBadge,
+        { backgroundColor: withAlpha(color, 0.13), borderColor: withAlpha(color, 0.3) },
+      ]}
+    >
+      <Icon name={getExecutionStatusIcon(label)} size={13} color={color} />
+      <Text style={[styles.statusText, { color }]} numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
+  );
+};
 
 interface TestCaseCardProps {
   testCase: TestCase;
@@ -45,6 +106,15 @@ export const TestCaseCard: React.FC<TestCaseCardProps> = ({
     testCase.priorityName,
   );
 
+  // Defect No and Priority are only meaningful once the test case is linked to a
+  // real defect, so they are surfaced together and hidden together otherwise.
+  const rawDefectNo = testCase.defectNo != null ? String(testCase.defectNo).trim() : '';
+  const hasLinkedDefect =
+    rawDefectNo.length > 0 && rawDefectNo !== '0' && rawDefectNo !== '-';
+
+  // "Assigned To" is shown for test cases that aren't mine.
+  const showAssignedTo = !isMyTestCase;
+
   return (
     <FadeInView delay={(index % 12) * 55} style={styles.wrapper}>
       <View style={[styles.card, { borderLeftColor: severityColor }]}>
@@ -55,13 +125,7 @@ export const TestCaseCard: React.FC<TestCaseCardProps> = ({
           </View>
           <View style={styles.headerRight}>
             {testCase.executionStatusName ? (
-              <Chip
-                label={testCase.executionStatusName}
-                color={testCase.executionStatusColor || Colors.primary}
-                dot
-                size="md"
-                uppercase
-              />
+              <StatusBadge label={testCase.executionStatusName} />
             ) : null}
           </View>
         </View>
@@ -84,28 +148,41 @@ export const TestCaseCard: React.FC<TestCaseCardProps> = ({
             <Text style={styles.chipLabel}>Severity</Text>
             <Chip label={testCase.severityName || '—'} color={severityColor} dot size="md" />
           </View>
-          <View style={styles.chipGroup}>
-            <Text style={styles.chipLabel}>Priority</Text>
-            <Chip label={testCase.priorityName || '—'} color={priorityColor} dot size="md" />
-          </View>
-        </View>
-
-        <View style={styles.grid}>
-          {testCase.defectNo ? (
-            <View style={styles.gridItem}>
-              <Text style={styles.gridLabel}>Linked Defect</Text>
-              <Text style={[styles.gridValueText, { color: Colors.error }]} numberOfLines={1}>
-                {testCase.defectNo}
-              </Text>
+          {hasLinkedDefect ? (
+            /* Priority is only surfaced alongside a linked defect. */
+            <View style={styles.chipGroup}>
+              <Text style={styles.chipLabel}>Priority</Text>
+              <Chip label={testCase.priorityName || '—'} color={priorityColor} dot size="md" />
             </View>
-          ) : null}
-          {!isMyTestCase && (
-            <View style={styles.gridItem}>
-              <Text style={styles.gridLabel}>Assigned To</Text>
+          ) : showAssignedTo ? (
+            /* With no Priority to show, pull "Assigned To" up into the free
+               second column (flexible) so the row isn't left half-empty. */
+            <View style={[styles.chipGroup, styles.chipGroupFlex]}>
+              <Text style={styles.chipLabel}>Assigned To</Text>
               <Text style={styles.gridValueText} numberOfLines={1}>{testCase.assignedToName}</Text>
             </View>
-          )}
+          ) : null}
         </View>
+
+        {hasLinkedDefect && (
+          <View style={styles.grid}>
+            <View style={styles.gridItem}>
+              <Text style={styles.gridLabel}>Defect No</Text>
+              <View style={styles.defectValueRow}>
+                <Icon name="link" size={12} color={Colors.error} />
+                <Text style={[styles.gridValueText, { color: Colors.error }]} numberOfLines={1}>
+                  {rawDefectNo}
+                </Text>
+              </View>
+            </View>
+            {showAssignedTo && (
+              <View style={styles.gridItem}>
+                <Text style={styles.gridLabel}>Assigned To</Text>
+                <Text style={styles.gridValueText} numberOfLines={1}>{testCase.assignedToName}</Text>
+              </View>
+            )}
+          </View>
+        )}
 
         <View style={styles.footer}>
           <View style={styles.releaseContainer}>
@@ -152,6 +229,23 @@ const styles = StyleSheet.create({
   headerRight: {
     marginLeft: Spacing.sm,
   },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 11,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    maxWidth: 150,
+  },
+  statusText: {
+    ...Typography.chipText,
+    fontSize: 11,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
   testCaseNo: {
     ...Typography.cardTitle,
     fontSize: 18,
@@ -195,6 +289,9 @@ const styles = StyleSheet.create({
   chipGroup: {
     gap: Spacing.xs,
   },
+  chipGroupFlex: {
+    flex: 1,
+  },
   chipLabel: {
     ...Typography.overline,
     fontSize: 9,
@@ -220,6 +317,11 @@ const styles = StyleSheet.create({
     ...Typography.bodyBold,
     fontSize: 13,
     color: Colors.text,
+  },
+  defectValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
   },
   footer: {
     flexDirection: 'row',
