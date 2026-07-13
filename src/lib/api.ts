@@ -8,7 +8,7 @@ import { Platform } from 'react-native';
  * If using a Physical Device, use your computer's IP: 'http://192.168.1.3:8088/api/v1'
  */
 // const API_BASE_URL = Platform.OS === 'android' ? 'http://10.0.2.2:8088/api/v1' : 'http://localhost:8088/api/v1';
-const API_BASE_URL = 'http://192.168.1.4:8088/api/v1';
+const API_BASE_URL = 'http://192.168.1.2:8088/api/v1';
 // const API_BASE_URL = 'http://192.168.1.3:8088/api/v1'; // Uncomment and update if using physical device
 
 const api = axios.create({

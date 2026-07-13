@@ -18,9 +18,10 @@ interface DefectCardProps {
   isMyDefect: boolean;
   onStatusChange: (defect: Defect, targetStatus: any) => Promise<void>;
   onReassign: (defect: Defect) => void;
-  /** id -> backend color lookups so chips use the real severity/priority hues. */
+  /** id -> backend color lookups so chips use the real severity/priority/status hues. */
   severityColorMap?: Record<string, string>;
   priorityColorMap?: Record<string, string>;
+  statusColorMap?: Record<string, string>;
   /** List index, used to stagger the entrance animation. */
   index?: number;
 }
@@ -32,6 +33,7 @@ export const DefectCard: React.FC<DefectCardProps> = ({
   onReassign,
   severityColorMap,
   priorityColorMap,
+  statusColorMap,
   index = 0,
 }) => {
   const { can } = usePermission();
@@ -61,14 +63,25 @@ export const DefectCard: React.FC<DefectCardProps> = ({
 
   if (!defect) return null;
 
+  // Status color is backend-driven (Status Type config) and resolved the same
+  // way as severity/priority, so both the My Defects and All Defects tabs show
+  // an identical status badge color instead of a hardcoded fallback.
+  const statusColor = resolveChipColor(
+    defect.statusColor ?? statusColorMap?.[String(defect.statusId)],
+    defect.statusName,
+  );
+
   const statusItems = [
-    { label: defect.statusName || 'Unknown', value: defect.statusId, color: defect.statusColor || '#64748b' },
+    { label: defect.statusName || 'Unknown', value: defect.statusId, color: statusColor },
     ...nextStatuses
       .filter(s => s.toStatus && s.toStatus.id !== defect.statusId)
       .map(s => ({
         label: s.toStatus.name,
         value: s.toStatus.id,
-        color: s.toStatus.color || Colors.primary
+        color: resolveChipColor(
+          s.toStatus.color ?? statusColorMap?.[String(s.toStatus.id)],
+          s.toStatus.name,
+        ),
       }))
   ];
 
@@ -92,7 +105,6 @@ export const DefectCard: React.FC<DefectCardProps> = ({
     defect.priorityColor ?? priorityColorMap?.[String(defect.priorityId)],
     defect.priorityName,
   );
-  const statusColor = defect.statusColor || Colors.primary;
 
   return (
     <FadeInView delay={(index % 12) * 55} style={styles.wrapper}>

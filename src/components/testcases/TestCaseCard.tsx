@@ -9,11 +9,16 @@ import { Chip } from '../common/Chip';
 import { FadeInView } from '../common/FadeInView';
 import { AnimatedPressable } from '../common/AnimatedPressable';
 import { resolveChipColor } from '../../utils/colorUtils';
-import { usePermission } from '../../context/PermissionContext';
 
 interface TestCaseCardProps {
   testCase: TestCase;
   isMyTestCase: boolean;
+  /**
+   * Whether the current user may reassign this test case. Decided by the parent
+   * screen from permissions (assign / update / create) so the button visibility
+   * and the reassign handler guard always agree.
+   */
+  canReassign?: boolean;
   onReassign: (testCase: TestCase) => void;
   severityColorMap?: Record<string, string>;
   priorityColorMap?: Record<string, string>;
@@ -23,13 +28,12 @@ interface TestCaseCardProps {
 export const TestCaseCard: React.FC<TestCaseCardProps> = ({
   testCase,
   isMyTestCase,
+  canReassign = false,
   onReassign,
   severityColorMap,
   priorityColorMap,
   index = 0,
 }) => {
-  const { can } = usePermission();
-
   if (!testCase) return null;
 
   const severityColor = resolveChipColor(
@@ -108,8 +112,9 @@ export const TestCaseCard: React.FC<TestCaseCardProps> = ({
             <Icon name="package" size={14} color={Colors.textSecondary} />
             <Text style={styles.releaseText} numberOfLines={1}>{testCase.releaseName}</Text>
           </View>
-          {/* TEST_CASE_ASSIGN controls the reassign action. */}
-          {can.testCase.assign && (
+          {/* Reassign is shown to assign / update / create users (decided by the
+              parent screen and passed down as `canReassign`). */}
+          {canReassign && (
             <AnimatedPressable style={styles.reassignBtn} onPress={() => onReassign(testCase)}>
               <Icon name="user-plus" size={15} color={Colors.primary} />
               <Text style={styles.reassignText}>Reassign</Text>

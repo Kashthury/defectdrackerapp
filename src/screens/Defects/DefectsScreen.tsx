@@ -243,7 +243,7 @@ const DefectsScreen = () => {
           priorityColor: item.priorityColor || item.priority?.color,
           statusId: statusObj.id || item.statusId,
           statusName: statusObj.name || item.statusName || (typeof item.status === 'string' ? item.status : 'Unknown'),
-          statusColor: statusObj.color || item.statusColor || '#64748b',
+          statusColor: statusObj.color || item.statusColor,
           defectTypeId: item.defectTypeId || item.defectType?.id,
           defectTypeName: item.defectTypeName || item.defectType?.name,
           moduleId: item.moduleId || item.module?.id,
@@ -418,10 +418,11 @@ const DefectsScreen = () => {
     }
   }, [loading, defects.length, myDefects.length]);
 
-  // id -> backend color lookups so severity/priority chips use real hues even
-  // when an individual defect payload doesn't inline its own color.
+  // id -> backend color lookups so severity/priority/status chips use real hues
+  // even when an individual defect payload doesn't inline its own color.
   const severityColorMap = useMemo(() => buildColorMap(options.severities), [options.severities]);
   const priorityColorMap = useMemo(() => buildColorMap(options.priorities), [options.priorities]);
+  const statusColorMap = useMemo(() => buildColorMap(options.statuses), [options.statuses]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -465,6 +466,7 @@ const DefectsScreen = () => {
               onReassign={handleReassignInitiate}
               severityColorMap={severityColorMap}
               priorityColorMap={priorityColorMap}
+              statusColorMap={statusColorMap}
               index={index}
             />
           )}

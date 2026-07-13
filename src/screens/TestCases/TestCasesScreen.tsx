@@ -63,6 +63,12 @@ const TestCasesScreen = () => {
   // conflated with assignment (which only decides the "My Test Cases" subset).
   const canViewTestCases = hasPermission(PERMISSIONS.TEST_CASE_READ);
 
+  // Reassigning changes a test case's owner, i.e. it edits the test case. Surface
+  // the Reassign action for anyone who can assign, update, or create test cases
+  // (not only TEST_CASE_ASSIGN), so update/create users get the button too.
+  const canReassignTestCases =
+    can.testCase.assign || can.testCase.update || can.testCase.create;
+
   const [activeTab, setActiveTab] = useState<'MY' | 'ALL'>('MY');
   const [testCases, setTestCases] = useState<TestCase[]>([]);
   const [loading, setLoading] = useState(true);
@@ -327,7 +333,7 @@ const TestCasesScreen = () => {
 
   const handleReassignInitiate = async (testCase: TestCase) => {
     // Validate permission before opening the reassign flow / API calls.
-    if (!can.testCase.assign) {
+    if (!canReassignTestCases) {
       toast.error('You do not have permission to reassign test cases.', 'Permission denied');
       return;
     }
@@ -373,7 +379,7 @@ const TestCasesScreen = () => {
   const handleReassignConfirm = async () => {
     if (!selectedTestCase || !targetEmployeeId || submittingReassign || !activeRelease?.id) return;
     // Re-validate at confirm time (defense-in-depth against stale UI state).
-    if (!can.testCase.assign) {
+    if (!canReassignTestCases) {
       toast.error('You do not have permission to reassign test cases.', 'Permission denied');
       setReassignModalVisible(false);
       return;
@@ -463,6 +469,7 @@ const TestCasesScreen = () => {
             <TestCaseCard
               testCase={item}
               isMyTestCase={activeTab === 'MY'}
+              canReassign={canReassignTestCases}
               onReassign={handleReassignInitiate}
               severityColorMap={severityColorMap}
               priorityColorMap={priorityColorMap}

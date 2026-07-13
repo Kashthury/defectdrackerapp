@@ -1,26 +1,32 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
+  ScrollView,
   ActivityIndicator,
   TextInput,
   Modal,
   TouchableWithoutFeedback,
+  Animated,
+  useWindowDimensions,
+  ViewStyle,
+  StyleProp,
 } from 'react-native';
 import { Colors } from '../../constants/colors';
 import { Typography } from '../../constants/typography';
 import { Radius, Spacing, Shadows } from '../../constants/theme';
 import { withAlpha } from '../../utils/colorUtils';
+import { RiskLevel } from '../../utils/riskUtils';
 import { usePermission } from '../../context/PermissionContext';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Feather';
-import Dropdown from '../../components/common/Dropdown';
 import { Chip } from '../../components/common/Chip';
 import { FadeInView } from '../../components/common/FadeInView';
 import { AnimatedPressable } from '../../components/common/AnimatedPressable';
-import { getAllProjects } from '../../services/projectService';
+import { ProjectListCard, getStatusMeta } from '../../components/project/ProjectListCard';
+import { getAllProjects, getProjectRisk } from '../../services/projectService';
 import { ModuleDefinition } from '../../constants/permissions';
 
 // Maps a module's colorKey to a concrete theme color for its option card.
@@ -35,33 +41,79 @@ const MODULE_COLORS: Record<string, string> = {
 const getModuleColor = (mod: ModuleDefinition) =>
   MODULE_COLORS[mod.colorKey ?? 'primary'] ?? Colors.primary;
 
-const formatDate = (dateString: string) => {
-  if (!dateString) return 'N/A';
-  const date = new Date(dateString);
-  return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
-};
-
-const getStatusColor = (status: string) => {
-  switch (status?.toLowerCase()) {
-    case 'active':
-      return Colors.success;
-    case 'on hold':
-      return Colors.warning;
-    case 'completed':
-      return Colors.info;
-    default:
-      return Colors.textLight;
-  }
-};
-
 // Allowed project statuses, mirrors the backend CHECK constraint:
 // status IN ('Active', 'On Hold', 'Completed'). Values are sent verbatim to
 // the `status` query param, so they must match the backend exactly.
 const PROJECT_STATUS_OPTIONS = [
-  { label: 'Active', value: 'Active', color: Colors.success },
-  { label: 'On Hold', value: 'On Hold', color: Colors.warning },
-  { label: 'Completed', value: 'Completed', color: Colors.info },
+  { label: 'Active', value: 'Active' },
+  { label: 'On Hold', value: 'On Hold' },
+  { label: 'Completed', value: 'Completed' },
 ];
+
+// Status filter chips shown below the search bar. "All" clears the filter; the
+// rest reuse the shared status color/icon mapping so the chips, the card status
+// badge and the accent color always agree.
+const STATUS_FILTERS = [
+  { label: 'All', value: '', color: Colors.primary, icon: 'grid' },
+  ...PROJECT_STATUS_OPTIONS.map((o) => {
+    const meta = getStatusMeta(o.value);
+    return { label: o.label, value: o.value, color: meta.color, icon: meta.icon };
+  }),
+];
+
+// Number of project risks fetched in parallel. Each risk resolves from three
+// metric endpoints, so this keeps the list responsive without flooding the API.
+const RISK_CONCURRENCY = 4;
+
+/**
+ * A single shimmering placeholder block used to compose skeleton cards while
+ * the first page of projects loads. Native-driver opacity loop keeps it cheap.
+ */
+const Skeleton: React.FC<{
+  height: number;
+  width?: ViewStyle['width'];
+  radius?: number;
+  style?: StyleProp<ViewStyle>;
+}> = ({ height, width = '100%', radius = Radius.sm, style }) => {
+  const opacity = useRef(new Animated.Value(0.5)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 1, duration: 650, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.5, duration: 650, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [opacity]);
+
+  return (
+    <Animated.View
+      style={[{ height, width, borderRadius: radius, backgroundColor: Colors.backgroundAlt, opacity }, style]}
+    />
+  );
+};
+
+/** Skeleton mirroring the ProjectListCard layout for a smooth loading state. */
+const SkeletonCard: React.FC = () => (
+  <View style={styles.skeletonCard}>
+    <View style={styles.skeletonHeader}>
+      <Skeleton height={46} width={46} radius={Radius.md} />
+      <View style={styles.skeletonHeaderText}>
+        <Skeleton height={15} width={'70%'} />
+        <Skeleton height={11} width={'45%'} style={styles.skeletonGap} />
+      </View>
+      <Skeleton height={22} width={70} radius={Radius.pill} />
+    </View>
+    <Skeleton height={8} width={'100%'} radius={Radius.pill} style={styles.skeletonBar} />
+    <View style={styles.skeletonDivider} />
+    <View style={styles.skeletonFooter}>
+      <Skeleton height={22} width={96} radius={Radius.pill} />
+      <Skeleton height={32} width={32} radius={Radius.pill} />
+    </View>
+  </View>
+);
 
 const ProjectScreen = () => {
   const [projects, setProjects] = useState<any[]>([]);
@@ -70,11 +122,18 @@ const ProjectScreen = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
 
+  // Resolved risk per project id. Populated progressively so the list can
+  // render immediately while each project's risk is still being computed.
+  const [riskMap, setRiskMap] = useState<Record<string, RiskLevel>>({});
+  const riskCacheRef = useRef<Record<string, RiskLevel>>({});
+
   // Modal state
   const [optionModalVisible, setOptionModalVisible] = useState(false);
   const [selectedProject, setSelectedProject] = useState<any>(null);
 
   const navigation = useNavigation<any>();
+  const { width } = useWindowDimensions();
+  const compact = width < 360;
 
   // Centralized permissions. The PermissionProvider always wraps the app, so
   // this is safe to call directly (no fragile try/catch fallback needed).
@@ -139,81 +198,90 @@ const ProjectScreen = () => {
     }
   };
 
+  // Progressively resolve each project's risk from its underlying metrics.
+  // Runs with bounded concurrency and caches results so filtering/searching
+  // never re-fetches a risk we already know.
+  useEffect(() => {
+    let cancelled = false;
+
+    const pending = projects
+      .map((p) => p?.id)
+      .filter((id) => id != null && riskCacheRef.current[String(id)] === undefined);
+
+    if (pending.length === 0) return;
+
+    let cursor = 0;
+    const worker = async () => {
+      while (!cancelled && cursor < pending.length) {
+        const id = pending[cursor++];
+        try {
+          const level = await getProjectRisk(id);
+          if (cancelled) return;
+          riskCacheRef.current[String(id)] = level;
+          setRiskMap((prev) => ({ ...prev, [String(id)]: level }));
+        } catch {
+          // Leave unresolved; the card keeps its neutral "assessing" state.
+        }
+      }
+    };
+
+    Promise.all(
+      Array.from({ length: Math.min(RISK_CONCURRENCY, pending.length) }, worker),
+    ).catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projects]);
+
   const clearFilters = () => {
     setSearchTerm('');
     setStatusFilter('');
   };
 
-  const openOptionModal = (project: any) => {
-    setSelectedProject(project);
-    // Scope permissions to this project so the module options reflect the
-    // user's project-specific access. Force a fresh fetch so the options honor
-    // the latest permissions (e.g. changed on the web app), not stale cache.
-    setCurrentProject(project.id, { force: true });
-    setOptionModalVisible(true);
-  };
+  const openOptionModal = useCallback(
+    (project: any) => {
+      setSelectedProject(project);
+      // Scope permissions to this project so the module options reflect the
+      // user's project-specific access. Force a fresh fetch so the options honor
+      // the latest permissions (e.g. changed on the web app), not stale cache.
+      setCurrentProject(project.id, { force: true });
+      setOptionModalVisible(true);
+    },
+    [setCurrentProject],
+  );
 
   const handleOptionSelect = (module: ModuleDefinition) => {
     setOptionModalVisible(false);
     navigation.navigate(module.route as never, { projectId: selectedProject?.id } as never);
   };
 
-  const renderItem = ({ item, index }: { item: any; index: number }) => {
-    const daysLeft = item.endDate
-      ? Math.ceil(
-          (new Date(item.endDate).getTime() - new Date().getTime()) /
-            (1000 * 60 * 60 * 24)
-        )
-      : 0;
-    const statusColor = getStatusColor(item.status);
+  const keyExtractor = useCallback(
+    (item: any, index: number) => String(item?.id ?? item?.projectId ?? index),
+    [],
+  );
 
-    return (
-      <FadeInView delay={(index % 12) * 45}>
-        <AnimatedPressable
-          style={[styles.projectCard, { borderLeftColor: statusColor }]}
-          onPress={() => openOptionModal(item)}
-        >
-          <View style={styles.cardMainContent}>
-            <View style={styles.topRow}>
-              <Text style={styles.projectName} numberOfLines={1}>
-                {item.name || 'Unnamed Project'}
-              </Text>
-              <Chip label={item.status || 'Unknown'} color={statusColor} variant="solid" size="sm" />
-            </View>
+  const renderItem = useCallback(
+    ({ item, index }: { item: any; index: number }) => {
+      const risk = riskMap[String(item.id)];
+      return (
+        <FadeInView delay={index < 8 ? index * 45 : 0}>
+          <ProjectListCard
+            project={item}
+            risk={risk}
+            riskLoading={risk === undefined}
+            compact={compact}
+            onPress={() => openOptionModal(item)}
+          />
+        </FadeInView>
+      );
+    },
+    [riskMap, compact, openOptionModal],
+  );
 
-            <View style={styles.metaRow}>
-              <Icon name="calendar" size={14} color={Colors.textLight} />
-              <Text style={styles.metaText}>
-                {formatDate(item.startDate)} - {formatDate(item.endDate)}
-              </Text>
-            </View>
-
-            {daysLeft > 0 && (
-              <View style={styles.metaRow}>
-                <Icon name="clock" size={14} color={Colors.textLight} />
-                <Text style={styles.metaText}>Days Left: {daysLeft} days</Text>
-              </View>
-            )}
-
-            {item.projectManagerName && (
-              <View style={styles.metaRow}>
-                <Icon name="user" size={14} color={Colors.textLight} />
-                <Text style={styles.metaText} numberOfLines={1}>
-                  {item.projectManagerName}
-                </Text>
-              </View>
-            )}
-          </View>
-
-          <View style={styles.chevronContainer}>
-            <Icon name="chevron-right" size={22} color={Colors.primary} />
-          </View>
-        </AnimatedPressable>
-      </FadeInView>
-    );
-  };
-
-  if ((loading && projects.length === 0) || permissionLoading) {
+  // Full-screen gate only while permissions load — nothing meaningful can
+  // render before we know which projects the user may see.
+  if (permissionLoading) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={Colors.primary} />
@@ -224,8 +292,12 @@ const ProjectScreen = () => {
   if (error) {
     return (
       <View style={styles.centered}>
+        <View style={styles.errorIconWrap}>
+          <Icon name="wifi-off" size={30} color={Colors.error} />
+        </View>
         <Text style={styles.errorText}>{error}</Text>
         <AnimatedPressable onPress={fetchProjects} style={styles.retryButton}>
+          <Icon name="refresh-cw" size={16} color={Colors.white} />
           <Text style={styles.retryText}>Retry</Text>
         </AnimatedPressable>
       </View>
@@ -233,6 +305,7 @@ const ProjectScreen = () => {
   }
 
   const isFiltered = searchTerm !== '' || statusFilter !== '';
+  const initialLoading = loading && projects.length === 0;
 
   return (
     <View style={styles.container}>
@@ -240,65 +313,115 @@ const ProjectScreen = () => {
         <View style={styles.titleRow}>
           <View style={styles.flex}>
             <Text style={styles.eyebrow}>Workspace</Text>
-            <Text style={Typography.title}>All Projects</Text>
+            <View style={styles.titleLine}>
+              <Text style={Typography.title}>Projects</Text>
+              {!initialLoading && (
+                <View style={styles.countPill}>
+                  <Text style={styles.countPillText}>{projects.length}</Text>
+                </View>
+              )}
+              {loading && projects.length > 0 && (
+                <ActivityIndicator size="small" color={Colors.primary} />
+              )}
+            </View>
             <Text style={[Typography.subtitle, styles.subtitle]}>
               {isAdmin ? 'Manage your projects and teams' : 'View your assigned projects'}
             </Text>
           </View>
           {isFiltered && (
             <AnimatedPressable onPress={clearFilters} style={styles.clearAllButton}>
-              <Text style={styles.clearAllText}>Clear All</Text>
+              <Icon name="x" size={14} color={Colors.primary} />
+              <Text style={styles.clearAllText}>Clear</Text>
             </AnimatedPressable>
           )}
         </View>
       </View>
 
-      {/* Search & Filter Bar */}
-      <View style={styles.filterContainer}>
-        <View style={styles.searchWrapper}>
-          <Icon name="search" size={18} color={Colors.textLight} style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search projects..."
-            placeholderTextColor={Colors.textLight}
-            value={searchTerm}
-            onChangeText={setSearchTerm}
-          />
-          {searchTerm.length > 0 && (
-            <AnimatedPressable onPress={() => setSearchTerm('')}>
-              <Icon name="x" size={18} color={Colors.textLight} />
-            </AnimatedPressable>
-          )}
-        </View>
-
-        <Dropdown
-          items={[{ label: 'All Status', value: '' }, ...PROJECT_STATUS_OPTIONS]}
-          selectedValue={statusFilter}
-          onSelect={(val) => setStatusFilter(String(val))}
-          placeholder="All Status"
-          style={styles.statusDropdown}
+      {/* Search */}
+      <View style={styles.searchWrapper}>
+        <Icon name="search" size={18} color={Colors.textLight} style={styles.searchIcon} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search projects..."
+          placeholderTextColor={Colors.textLight}
+          value={searchTerm}
+          onChangeText={setSearchTerm}
+          returnKeyType="search"
         />
+        {searchTerm.length > 0 && (
+          <AnimatedPressable onPress={() => setSearchTerm('')}>
+            <Icon name="x-circle" size={18} color={Colors.textLight} />
+          </AnimatedPressable>
+        )}
       </View>
 
-      <FlatList
-        data={projects}
-        keyExtractor={(item) => item.id?.toString() || Math.random().toString()}
-        renderItem={renderItem}
-        contentContainerStyle={styles.list}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Icon name="folder" size={56} color={Colors.borderStrong} />
-            <Text style={styles.emptyTitle}>
-              {isAdmin ? 'No projects yet' : 'No projects assigned'}
-            </Text>
-            <Text style={styles.emptySub}>
-              {isAdmin
-                ? 'Create your first project to get started'
-                : 'You are not allocated to any projects yet'}
-            </Text>
-          </View>
-        }
-      />
+      {/* Status filter chips */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.chipBar}
+        contentContainerStyle={styles.chipBarContent}
+      >
+        {STATUS_FILTERS.map((f) => (
+          <Chip
+            key={f.value || 'all'}
+            label={f.label}
+            color={f.color}
+            icon={f.icon}
+            size="md"
+            active={statusFilter === f.value}
+            onPress={() => setStatusFilter(f.value)}
+            style={styles.chipSpacing}
+          />
+        ))}
+      </ScrollView>
+
+      {initialLoading ? (
+        <View style={styles.list}>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </View>
+      ) : (
+        <FlatList
+          data={projects}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          removeClippedSubviews
+          initialNumToRender={6}
+          maxToRenderPerBatch={8}
+          windowSize={9}
+          updateCellsBatchingPeriod={50}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIconWrap}>
+                <Icon name={isFiltered ? 'search' : 'folder'} size={38} color={Colors.primary} />
+              </View>
+              <Text style={styles.emptyTitle}>
+                {isFiltered
+                  ? 'No matching projects'
+                  : isAdmin
+                  ? 'No projects yet'
+                  : 'No projects assigned'}
+              </Text>
+              <Text style={styles.emptySub}>
+                {isFiltered
+                  ? 'Try a different search or status filter'
+                  : isAdmin
+                  ? 'Create your first project to get started'
+                  : 'You are not allocated to any projects yet'}
+              </Text>
+              {isFiltered && (
+                <AnimatedPressable onPress={clearFilters} style={styles.emptyClearButton}>
+                  <Text style={styles.emptyClearText}>Clear filters</Text>
+                </AnimatedPressable>
+              )}
+            </View>
+          }
+        />
+      )}
 
       {/* Project Options Modal */}
       <Modal
@@ -419,7 +542,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
-    padding: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
   },
   header: {
     marginBottom: Spacing.lg,
@@ -429,21 +553,46 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
+  titleLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
   eyebrow: {
     ...Typography.overline,
     color: Colors.primary,
     marginBottom: 2,
   },
+  countPill: {
+    minWidth: 28,
+    height: 24,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: Radius.pill,
+    backgroundColor: withAlpha(Colors.primary, 0.12),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countPillText: {
+    ...Typography.chipText,
+    color: Colors.primary,
+    fontSize: 13,
+  },
   subtitle: {
-    marginTop: 2,
+    marginTop: 4,
+    fontSize: 14,
   },
   clearAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     paddingVertical: Spacing.xs,
     paddingHorizontal: Spacing.sm,
+    borderRadius: Radius.pill,
+    backgroundColor: withAlpha(Colors.primary, 0.1),
   },
   clearAllText: {
     ...Typography.link,
-    fontSize: 14,
+    fontSize: 13,
   },
   centered: {
     flex: 1,
@@ -452,6 +601,15 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
     paddingHorizontal: Spacing.xl,
   },
+  errorIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.errorBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.lg,
+  },
   errorText: {
     ...Typography.subtitle,
     color: Colors.error,
@@ -459,6 +617,9 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
     paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.md,
     backgroundColor: Colors.primary,
@@ -468,22 +629,16 @@ const styles = StyleSheet.create({
     ...Typography.buttonText,
     fontSize: 15,
   },
-  filterContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.lg,
-    gap: Spacing.sm,
-  },
   searchWrapper: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.card,
     borderRadius: Radius.md,
     paddingHorizontal: Spacing.md,
-    height: 48,
+    height: 50,
     borderWidth: 1,
     borderColor: Colors.border,
+    ...Shadows.soft,
   },
   searchIcon: {
     marginRight: Spacing.sm,
@@ -495,62 +650,40 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontFamily: Typography.body.fontFamily,
   },
-  statusDropdown: {
-    flex: 1,
+  chipBar: {
+    marginTop: Spacing.md,
+    marginBottom: Spacing.sm,
+    flexGrow: 0,
+  },
+  chipBarContent: {
+    paddingRight: Spacing.lg,
+    paddingVertical: Spacing.xs,
+  },
+  chipSpacing: {
+    marginRight: Spacing.sm,
   },
   list: {
-    paddingBottom: Spacing.xl,
-  },
-  projectCard: {
-    backgroundColor: Colors.card,
-    padding: Spacing.lg,
-    borderRadius: Radius.lg,
-    marginBottom: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderLeftWidth: 4,
-    ...Shadows.card,
-  },
-  cardMainContent: {
-    flex: 1,
-  },
-  topRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.sm,
-    gap: Spacing.sm,
-  },
-  projectName: {
-    ...Typography.cardTitle,
-    fontSize: 17,
-    flex: 1,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.xs,
-    gap: Spacing.xs,
-  },
-  metaText: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
-    flexShrink: 1,
-  },
-  chevronContainer: {
-    marginLeft: Spacing.sm,
-    justifyContent: 'center',
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.huge,
   },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: Spacing.huge + Spacing.xl,
+    paddingVertical: Spacing.huge + Spacing.lg,
+    paddingHorizontal: Spacing.xl,
+  },
+  emptyIconWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: Radius.pill,
+    backgroundColor: withAlpha(Colors.primary, 0.1),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.lg,
   },
   emptyTitle: {
     ...Typography.sectionTitle,
-    marginTop: Spacing.md,
+    marginTop: Spacing.xs,
   },
   emptySub: {
     ...Typography.caption,
@@ -558,6 +691,52 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
     textAlign: 'center',
   },
+  emptyClearButton: {
+    marginTop: Spacing.lg,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.pill,
+    backgroundColor: withAlpha(Colors.primary, 0.1),
+  },
+  emptyClearText: {
+    ...Typography.link,
+    fontSize: 14,
+  },
+  // ---- Skeleton loading ----
+  skeletonCard: {
+    backgroundColor: Colors.card,
+    borderRadius: Radius.xl,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: Spacing.md,
+    ...Shadows.soft,
+  },
+  skeletonHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  skeletonHeaderText: {
+    flex: 1,
+  },
+  skeletonGap: {
+    marginTop: Spacing.sm,
+  },
+  skeletonBar: {
+    marginTop: Spacing.lg,
+  },
+  skeletonDivider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginVertical: Spacing.md,
+  },
+  skeletonFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  // ---- Modal ----
   modalOverlay: {
     flex: 1,
     backgroundColor: Colors.overlay,
