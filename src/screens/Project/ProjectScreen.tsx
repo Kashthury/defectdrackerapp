@@ -377,7 +377,7 @@ const ProjectScreen = () => {
       </ScrollView>
 
       {initialLoading ? (
-        <View style={styles.list}>
+        <View style={[styles.listContainer, styles.list]}>
           {[0, 1, 2, 3, 4].map((i) => (
             <SkeletonCard key={i} />
           ))}
@@ -387,6 +387,7 @@ const ProjectScreen = () => {
           data={projects}
           keyExtractor={keyExtractor}
           renderItem={renderItem}
+          style={styles.listContainer}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           removeClippedSubviews
@@ -653,7 +654,18 @@ const styles = StyleSheet.create({
   chipBar: {
     marginTop: Spacing.md,
     marginBottom: Spacing.sm,
+    // Rigid height: never grow to fill the column AND never shrink. Without
+    // flexShrink: 0 the tall FlatList content squeezes this horizontal
+    // ScrollView and clips the bottom half of the status chips once project
+    // cards exist. The sibling FlatList (flex: 1) absorbs the remaining space.
     flexGrow: 0,
+    flexShrink: 0,
+  },
+  listContainer: {
+    // Take the remaining vertical space and scroll internally instead of
+    // letting the list's intrinsic content height overflow the column and
+    // compress the chip bar above it.
+    flex: 1,
   },
   chipBarContent: {
     paddingRight: Spacing.lg,
